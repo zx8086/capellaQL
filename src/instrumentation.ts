@@ -9,8 +9,8 @@ import {
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { Resource } from "@opentelemetry/resources";
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
   SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
 } from "@opentelemetry/semantic-conventions";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -38,8 +38,8 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 // Create a shared resource
 const resource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: config.openTelemetry.SERVICE_NAME,
-  [SEMRESATTRS_SERVICE_VERSION]: config.openTelemetry.SERVICE_VERSION,
+  [ATTR_SERVICE_NAME]: config.openTelemetry.SERVICE_NAME,
+  [ATTR_SERVICE_VERSION]: config.openTelemetry.SERVICE_VERSION,
   [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]:
     config.openTelemetry.DEPLOYMENT_ENVIRONMENT,
 });
