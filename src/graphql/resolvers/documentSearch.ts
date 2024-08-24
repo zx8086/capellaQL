@@ -14,7 +14,10 @@ const documentSearch = {
     ): Promise<any[]> => {
       try {
         const { collections, keys } = args;
-        const cluster = await getCluster();
+        const cluster = await getCluster().catch((error) => {
+          err("Error in getCluster:", error);
+          throw error;
+        });
         const results = [];
 
         for (const key of keys) {
