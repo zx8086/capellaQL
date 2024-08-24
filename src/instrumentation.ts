@@ -28,7 +28,6 @@ import {
 } from "@opentelemetry/sdk-logs";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { WinstonInstrumentation } from "@opentelemetry/instrumentation-winston";
-import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { GraphQLInstrumentation } from "@opentelemetry/instrumentation-graphql";
 import * as api from "@opentelemetry/api-logs";
 import { config } from "$config";
