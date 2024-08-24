@@ -1,6 +1,6 @@
 /* src/graphql/resolvers/optionsSummary.ts */
 
-import { log, err } from "$utils/logger";
+import { log, err, debug } from "$utils/logger";
 import { getCluster } from "../../lib/clusterProvider";
 
 const optionsSummary = {
@@ -46,7 +46,7 @@ const optionsSummary = {
 
         let result = await cluster.cluster.query(query, queryOptions);
 
-        log("Result:", JSON.stringify(result, null, 2));
+        debug("Result:", JSON.stringify(result, null, 2));
 
         return result.rows[0][0];
       } catch (error) {

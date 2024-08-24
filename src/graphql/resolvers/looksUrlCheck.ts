@@ -1,6 +1,6 @@
 /* src/graphql/resolvers/looksUrlCheck.ts */
 
-import { log, err } from "$utils/logger";
+import { log, err, debug } from "$utils/logger";
 import { getCluster } from "../../lib/clusterProvider";
 
 const looksUrlCheck = {
@@ -30,7 +30,7 @@ const looksUrlCheck = {
 
         let result = await cluster.cluster.query(query, queryOptions);
 
-        log(JSON.stringify(result, null, 2));
+        debug(JSON.stringify(result, null, 2));
 
         // Assuming the Couchbase function returns an array of objects with divisionCode and urls
         return result.rows[0];

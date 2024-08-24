@@ -23,9 +23,8 @@
     "baseUrl": ".",
     "paths": {
       "$lib": ["src/lib"],
+      "$config": ["src/config.ts"],
       "$lib/*": ["src/lib/*"],
-      "$config": ["src/config"],
-      "$config/*": ["src/config/*"],
       "$utils": ["src/utils"],
       "$utils/*": ["src/utils/*"],
       "$models": ["src/models"],

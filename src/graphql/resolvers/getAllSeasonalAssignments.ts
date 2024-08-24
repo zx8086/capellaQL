@@ -1,7 +1,7 @@
 /* src/graphql/resolvers/getAllSeasonalAssignments.ts */
 
 import { getCluster } from "../../lib/clusterProvider";
-import { log, err } from "$utils/logger";
+import { log, err, debug } from "$utils/logger";
 
 const getAllSeasonalAssignments = {
   Query: {
@@ -34,7 +34,7 @@ const getAllSeasonalAssignments = {
 
         let result = await cluster.cluster.query(query, queryOptions);
 
-        log(JSON.stringify(result, null, 2));
+        debug(JSON.stringify(result, null, 2));
 
         // Filter divisions based on isActive if it's provided
         if (isActive !== undefined) {

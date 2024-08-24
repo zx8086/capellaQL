@@ -1,6 +1,6 @@
 /* src/graphql/resolvers/imageUrlCheck.ts */
 
-import { log, err } from "$utils/logger";
+import { log, err, debug } from "$utils/logger";
 import { getCluster } from "../../lib/clusterProvider";
 
 const imageUrlCheck = {
@@ -30,7 +30,7 @@ const imageUrlCheck = {
 
         let result = await cluster.cluster.query(query, queryOptions);
 
-        log(JSON.stringify(result, null, 2));
+        debug(JSON.stringify(result, null, 2));
 
         return result.rows[0];
       } catch (error) {

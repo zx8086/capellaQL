@@ -1,6 +1,6 @@
 /* src/graphql/resolvers/lookDetails.ts */
 
-import { log, err } from "$utils/logger";
+import { log, err, debug } from "$utils/logger";
 import { getCluster } from "../../lib/clusterProvider";
 
 const lookDetails = {
@@ -29,7 +29,7 @@ const lookDetails = {
 
         let result = await cluster.cluster.query(query, queryOptions);
 
-        log(JSON.stringify(result, null, 2));
+        debug(JSON.stringify(result, null, 2));
 
         return result.rows[0][0];
       } catch (error) {

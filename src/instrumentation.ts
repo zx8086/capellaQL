@@ -31,7 +31,6 @@ import { WinstonInstrumentation } from "@opentelemetry/instrumentation-winston";
 import { GraphQLInstrumentation } from "@opentelemetry/instrumentation-graphql";
 import * as api from "@opentelemetry/api-logs";
 import { config } from "$config";
-import { log, err } from "$utils/logger";
 
 // Set up diagnostics logging
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
@@ -80,13 +79,12 @@ const otlpMetricReader = new PeriodicExportingMetricReader({
 const meterProvider = new MeterProvider({
   resource: resource,
   readers: [consoleMetricReader, otlpMetricReader],
-  // readers: [otlpMetricReader],
 });
 
-// Set this MeterProvider to be global to the app being instrumented. -> For multiple Metrics Readers
+// Set this MeterProvider to be global to the app being instrumented.
 metrics.setGlobalMeterProvider(meterProvider);
 
-// Node SDK for OpenTelemetry without metricReader -> Metric Reader defined outside of this SDK so we can use multiple Metrics Readers
+// Node SDK for OpenTelemetry
 const sdk = new NodeSDK({
   resource: resource,
   traceExporter,
@@ -96,36 +94,44 @@ const sdk = new NodeSDK({
     getNodeAutoInstrumentations({
       "@opentelemetry/instrumentation-aws-lambda": { enabled: false },
       "@opentelemetry/instrumentation-fs": { enabled: false },
-      "@opentelemetry/instrumentation-winston": { enabled: false },
     }),
     new GraphQLInstrumentation({
       allowValues: true,
       depth: -1,
-      // mergeItems: true,
-      // ignoreTrivialResolveSpans: true,
-      // ignoreResolveSpans: true,
     }),
     new WinstonInstrumentation({
       enabled: true,
-      disableLogSending: true,
+      disableLogSending: false,
     }),
   ],
 });
 
 // Start the SDK
 try {
-  sdk.start();
-  log("OpenTelemetry SDK started with auto-instrumentation");
+  const startResult = sdk.start();
+  if (startResult && typeof startResult.then === "function") {
+    // If start() returns a Promise
+    startResult
+      .then(() =>
+        console.log("OpenTelemetry SDK started with auto-instrumentation"),
+      )
+      .catch((error) =>
+        console.error("Error starting OpenTelemetry SDK:", error),
+      );
+  } else {
+    // If start() is synchronous
+    console.log("OpenTelemetry SDK started with auto-instrumentation");
+  }
 } catch (error) {
-  err("Error starting OpenTelemetry SDK:", error);
+  console.error("Error starting OpenTelemetry SDK:", error);
 }
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
   sdk
     .shutdown()
-    .then(() => log("SDK shut down successfully"))
-    .catch((error) => log("Error shutting down SDK", error))
+    .then(() => console.log("SDK shut down successfully"))
+    .catch((error) => console.error("Error shutting down SDK", error))
     .finally(() => process.exit(0));
 });
 
