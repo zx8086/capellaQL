@@ -5,10 +5,6 @@ import type { Config } from "$models/types";
 
 export const config: Config = {
   application: {
-    HEALTH_CHECK_PORT: getEnvNumberOrThrow("HEALTH_CHECK_PORT"),
-    HEALTH_CHECK_LOG_INTERVAL: getEnvNumberOrThrow("HEALTH_CHECK_LOG_INTERVAL"),
-    HEALTH_CHECK_INTERVAL: getEnvNumberOrThrow("HEALTH_CHECK_INTERVAL"),
-    CRON_SCHEDULE: getEnvOrThrow("CRON_SCHEDULE"),
     LOG_LEVEL: getEnvOrThrow("LOG_LEVEL"),
     LOG_MAX_SIZE: getEnvOrThrow("LOG_MAX_SIZE"),
     LOG_MAX_FILES: getEnvOrThrow("LOG_MAX_FILES"),

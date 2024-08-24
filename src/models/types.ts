@@ -1,10 +1,6 @@
 /* src/models/types.ts */
 
 export interface ApplicationConfig {
-  HEALTH_CHECK_PORT: number;
-  HEALTH_CHECK_LOG_INTERVAL: number;
-  HEALTH_CHECK_INTERVAL: number;
-  CRON_SCHEDULE: string;
   LOG_LEVEL: string;
   LOG_MAX_SIZE: string;
   LOG_MAX_FILES: string;
