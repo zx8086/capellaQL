@@ -22,7 +22,7 @@ export const logger = winston.createLogger({
       level: config.application.LOG_LEVEL,
     }),
     new DailyRotateFile({
-      filename: path.join(logsDir, "couchbase-capellaQL-%DATE%.log"),
+      filename: path.join(logsDir, "couchbase-capellaQL-service-%DATE%.log"),
       datePattern: "YYYY-MM-DD",
       zippedArchive: true,
       maxSize: config.application.LOG_MAX_SIZE,

@@ -1,0 +1,44 @@
+# docker-compose.yml
+
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT}:4000"
+    env_file:
+      - .env
+    environment:
+      - CN_ROOT=/usr/src/app
+      - CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
+      - NODE_ENV=production
+      - BASE_URL
+      - PORT
+      - LOG_LEVEL
+      - LOG_MAX_SIZE
+      - LOG_MAX_FILES
+      - YOGA_RESPONSE_CACHE_TTL
+      - COUCHBASE_URL
+      - COUCHBASE_USERNAME
+      - COUCHBASE_PASSWORD
+      - COUCHBASE_BUCKET
+      - COUCHBASE_SCOPE
+      - COUCHBASE_COLLECTION
+      - ELASTIC_APM_SERVICE_NAME
+      - ELASTIC_APM_SECRET_TOKEN
+      - ELASTIC_APM_SERVER_URL
+      - ELASTIC_URL
+      - SERVICE_NAME
+      - SERVICE_VERSION
+      - DEPLOYMENT_ENVIRONMENT
+      - TRACES_ENDPOINT
+      - METRICS_ENDPOINT
+      - LOGS_ENDPOINT
+      - METRIC_READER_INTERVAL
+      - CONSOLE_METRIC_READER_INTERVAL
+      - ALERT_TYPE
+      - SLACK_WEBHOOK_URL
+      - TEAMS_WEBHOOK_URL

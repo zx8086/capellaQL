@@ -1,0 +1,8 @@
+[install.lockfile]
+path = "bun.lockb"
+
+[install]
+globalThis.CN_ROOT = "/usr/src/app"
+globalThis.CXXCBC_CACHE_DIR = "/usr/src/app/deps/couchbase-cxx-cache"
+[build]
+target = "node"

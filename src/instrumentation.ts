@@ -32,6 +32,7 @@ import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { GraphQLInstrumentation } from "@opentelemetry/instrumentation-graphql";
 import * as api from "@opentelemetry/api-logs";
 import { config } from "$config";
+import { log, err } from "$utils/logger";
 
 // Set up diagnostics logging
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
@@ -115,17 +116,17 @@ const sdk = new NodeSDK({
 // Start the SDK
 try {
   sdk.start();
-  console.log("OpenTelemetry SDK started with auto-instrumentation");
+  log("OpenTelemetry SDK started with auto-instrumentation");
 } catch (error) {
-  console.error("Error starting OpenTelemetry SDK:", error);
+  err("Error starting OpenTelemetry SDK:", error);
 }
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
   sdk
     .shutdown()
-    .then(() => console.log("SDK shut down successfully"))
-    .catch((error) => console.log("Error shutting down SDK", error))
+    .then(() => log("SDK shut down successfully"))
+    .catch((error) => log("Error shutting down SDK", error))
     .finally(() => process.exit(0));
 });
 
