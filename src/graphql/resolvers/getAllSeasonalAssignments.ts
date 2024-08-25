@@ -29,8 +29,7 @@ const getAllSeasonalAssignments = {
           },
         };
 
-        log("Query", query);
-        log("queryOptions", queryOptions);
+        log("Query executed", { query, queryOptions });
 
         let result = await cluster.cluster.query(query, queryOptions);
 

@@ -27,8 +27,7 @@ const documentSearch = {
               parameters: { key },
             };
 
-            log("Query", query);
-            log("queryOptions", queryOptions);
+            log("Query executed", { query, queryOptions });
 
             const start = Date.now();
             const result = await cluster.cluster.query(query, queryOptions);

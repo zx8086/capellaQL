@@ -1,4 +1,4 @@
-// getDivisionAssignment.ts
+/* src/graphql/resolvers/getDivisionalAssignment.ts */
 
 import { log, err, debug } from "$utils/logger";
 import { getCluster } from "../../lib/clusterProvider";
@@ -30,8 +30,7 @@ const getDivisionAssignment = {
           },
         };
 
-        log("Query", query);
-        log("queryOptions", queryOptions);
+        log("Query executed", { query, queryOptions });
 
         let result = await cluster.cluster.query(query, queryOptions);
 
