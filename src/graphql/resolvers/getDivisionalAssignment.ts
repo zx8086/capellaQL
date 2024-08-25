@@ -1,7 +1,7 @@
 /* src/graphql/resolvers/getDivisionalAssignment.ts */
 
 import { log, err, debug } from "$utils/logger";
-import { getCluster } from "../../lib/clusterProvider";
+import { getCluster } from "$lib/clusterProvider";
 
 const getDivisionAssignment = {
   Query: {

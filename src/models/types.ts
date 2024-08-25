@@ -25,18 +25,10 @@ export interface OpenTelemetryConfig {
   METRICS_ENDPOINT: string;
   LOGS_ENDPOINT: string;
   METRIC_READER_INTERVAL: number;
-  CONSOLE_METRIC_READER_INTERVAL: number;
-}
-
-export interface MessagingConfig {
-  ALERT_TYPE: string;
-  SLACK_WEBHOOK_URL: string;
-  TEAMS_WEBHOOK_URL: string;
 }
 
 export interface Config {
   application: ApplicationConfig;
   capella: CapellaConfig;
   openTelemetry: OpenTelemetryConfig;
-  messaging: MessagingConfig;
 }

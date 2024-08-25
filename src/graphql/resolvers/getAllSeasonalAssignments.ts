@@ -1,6 +1,6 @@
 /* src/graphql/resolvers/getAllSeasonalAssignments.ts */
 
-import { getCluster } from "../../lib/clusterProvider";
+import { getCluster } from "$lib/clusterProvider";
 import { log, err, debug } from "$utils/logger";
 
 const getAllSeasonalAssignments = {

@@ -1,7 +1,7 @@
 /* src/graphql/resolvers/looks.ts */
 
 import { log, err, debug } from "$utils/logger";
-import { getCluster } from "../../lib/clusterProvider";
+import { getCluster } from "$lib/clusterProvider";
 
 const looks = {
   Query: {

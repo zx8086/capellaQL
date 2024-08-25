@@ -27,14 +27,6 @@ export const config: Config = {
     METRICS_ENDPOINT: getEnvOrThrow("METRICS_ENDPOINT"),
     LOGS_ENDPOINT: getEnvOrThrow("LOGS_ENDPOINT"),
     METRIC_READER_INTERVAL: getEnvNumberOrThrow("METRIC_READER_INTERVAL"),
-    CONSOLE_METRIC_READER_INTERVAL: getEnvNumberOrThrow(
-      "CONSOLE_METRIC_READER_INTERVAL",
-    ),
-  },
-  messaging: {
-    ALERT_TYPE: getEnvOrThrow("ALERT_TYPE"),
-    SLACK_WEBHOOK_URL: getEnvOrThrow("SLACK_WEBHOOK_URL"),
-    TEAMS_WEBHOOK_URL: getEnvOrThrow("TEAMS_WEBHOOK_URL"),
   },
 };
 

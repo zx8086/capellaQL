@@ -20,7 +20,6 @@ import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   MeterProvider,
   PeriodicExportingMetricReader,
-  ConsoleMetricExporter,
 } from "@opentelemetry/sdk-metrics";
 import {
   LoggerProvider,
@@ -64,12 +63,6 @@ const loggerProvider = new LoggerProvider({ resource });
 loggerProvider.addLogRecordProcessor(new BatchLogRecordProcessor(logExporter));
 api.logs.setGlobalLoggerProvider(loggerProvider);
 
-// Set up MetricReaders
-const consoleMetricReader = new PeriodicExportingMetricReader({
-  exporter: new ConsoleMetricExporter(),
-  exportIntervalMillis: config.openTelemetry.CONSOLE_METRIC_READER_INTERVAL,
-});
-
 const otlpMetricReader = new PeriodicExportingMetricReader({
   exporter: otlpMetricExporter,
   exportIntervalMillis: config.openTelemetry.METRIC_READER_INTERVAL,
@@ -78,7 +71,7 @@ const otlpMetricReader = new PeriodicExportingMetricReader({
 // Set up MeterProvider
 const meterProvider = new MeterProvider({
   resource: resource,
-  readers: [consoleMetricReader, otlpMetricReader],
+  readers: [otlpMetricReader],
 });
 
 // Set this MeterProvider to be global to the app being instrumented.

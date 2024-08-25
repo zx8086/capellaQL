@@ -1,7 +1,7 @@
 /* src/graphql/resolvers/documentSearch.ts */
 
 import { log, err } from "$utils/logger";
-import { getCluster } from "../../lib/clusterProvider";
+import { getCluster } from "$lib/clusterProvider";
 
 const documentSearch = {
   Query: {

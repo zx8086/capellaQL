@@ -1,7 +1,7 @@
 /* src/graphql/resolvers/looksUrlCheck.ts */
 
 import { log, err, debug } from "$utils/logger";
-import { getCluster } from "../../lib/clusterProvider";
+import { getCluster } from "$lib/clusterProvider";
 
 const looksUrlCheck = {
   Query: {
