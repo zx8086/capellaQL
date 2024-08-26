@@ -8,11 +8,13 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "typeRoots": ["./node_modules/@types", "./src"],
+
     // Bundler mode
     "moduleResolution": "node",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": false,
+
     // Best practices
     "strict": true,
     "skipLibCheck": true,
@@ -31,10 +33,12 @@
       "$models/*": ["src/models/*"]
     },
     "types": ["bun-types"],
+
     // Some stricter flags (enabled for better code quality)
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
+
     // Additional recommended settings
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
