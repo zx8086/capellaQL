@@ -42,6 +42,7 @@
     "*/graphql": "^16.9.0"
   },
   "devDependencies": {
+    "@types/bun": "^1.1.8",
     "bun-types": "^1.1.26"
   },
   "module": "src/index.ts",
