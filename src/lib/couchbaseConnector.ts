@@ -8,7 +8,7 @@ import {
   Scope,
   Collection,
   connect,
-  QueryOptions,
+  type QueryOptions,
   QueryResult,
   StreamableRowPromise,
   QueryMetaData,
