@@ -32,7 +32,7 @@ import * as api from "@opentelemetry/api-logs";
 import { config } from "$config";
 
 // Set up diagnostics logging
-diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
 // Create a shared resource
 const resource = new Resource({
@@ -101,24 +101,20 @@ const sdk = new NodeSDK({
 });
 
 // Start the SDK
-try {
-  const startResult = sdk.start();
-  if (startResult && typeof startResult.then === "function") {
-    // If start() returns a Promise
-    startResult
-      .then(() =>
-        console.log("OpenTelemetry SDK started with auto-instrumentation"),
-      )
-      .catch((error) =>
-        console.error("Error starting OpenTelemetry SDK:", error),
-      );
-  } else {
-    // If start() is synchronous
+async function initializeOpenTelemetrySDK() {
+  try {
+    sdk.start();
     console.log("OpenTelemetry SDK started with auto-instrumentation");
+  } catch (error) {
+    console.error(
+      "Error starting OpenTelemetry SDK:",
+      error instanceof Error ? error.message : String(error),
+    );
   }
-} catch (error) {
-  console.error("Error starting OpenTelemetry SDK:", error);
 }
+
+// Call the function to initialize the SDK
+initializeOpenTelemetrySDK();
 
 // Graceful shutdown
 process.on("SIGTERM", () => {

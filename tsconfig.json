@@ -13,7 +13,8 @@
     "moduleResolution": "node",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "noEmit": false,
+    "noEmit": true,
+    "noImplicitAny": false,
 
     // Best practices
     "strict": true,
@@ -32,8 +33,7 @@
       "$models": ["src/models"],
       "$models/*": ["src/models/*"]
     },
-    "types": ["bun-types"],
-
+    "types": [],
     // Some stricter flags (enabled for better code quality)
     "noUnusedLocals": true,
     "noUnusedParameters": true,

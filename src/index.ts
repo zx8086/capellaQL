@@ -6,9 +6,6 @@ import { yoga } from "@elysiajs/graphql-yoga";
 import typeDefs from "./graphql/typeDefs";
 import resolvers from "./graphql/resolvers";
 import { useResponseCache } from "@graphql-yoga/plugin-response-cache";
-import { execute, parse, specifiedRules, subscribe, validate } from "graphql";
-import { useEngine } from "@envelop/core";
-import { usePrometheus } from "@envelop/prometheus";
 import { log, err } from "$utils/logger";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -16,37 +13,30 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-if (typeof globalThis.CN_ROOT === "undefined") {
-  globalThis.CN_ROOT = process.env.CN_ROOT || path.resolve(__dirname, "..");
+// Define types for custom global properties using index signatures
+declare global {
+  var globalThis: {
+    [key: string]: any;
+  };
 }
 
-if (typeof globalThis.CXXCBC_CACHE_DIR === "undefined") {
-  globalThis.CXXCBC_CACHE_DIR =
-    process.env.CN_CXXCBC_CACHE_DIR ||
-    path.join(globalThis.CN_ROOT, "deps", "couchbase-cxx-cache");
+if (typeof globalThis["CN_ROOT"] === "undefined") {
+  globalThis["CN_ROOT"] =
+    process.env["CN_ROOT"] || path.resolve(__dirname, "..");
 }
 
-if (typeof globalThis.ENV_TRUE === "undefined") {
-  globalThis.ENV_TRUE = ["true", "1", "y", "yes", "on"];
+if (typeof globalThis["CN_CXXCBC_CACHE_DIR"] === "undefined") {
+  globalThis["CN_CXXCBC_CACHE_DIR"] =
+    process.env["CN_CXXCBC_CACHE_DIR"] ||
+    path.join(globalThis["CN_ROOT"], "deps", "couchbase-cxx-cache");
 }
 
-const SERVER_PORT = config.application.PORT;
-const YOGA_RESPONSE_CACHE_TTL = config.application.YOGA_RESPONSE_CACHE_TTL;
+if (typeof globalThis["ENV_TRUE"] === "undefined") {
+  globalThis["ENV_TRUE"] = ["true", "1", "y", "yes", "on"];
+}
 
-const createEnvelopPlugins = () => [
-  useEngine({ parse, validate, specifiedRules, execute, subscribe }),
-  usePrometheus({
-    requestCount: true,
-    requestSummary: true,
-    parse: true,
-    validate: true,
-    contextBuilding: true,
-    execute: true,
-    errors: true,
-    resolvers: true,
-    deprecatedFields: true,
-  }),
-];
+const SERVER_PORT = config.application["PORT"];
+const YOGA_RESPONSE_CACHE_TTL = config.application["YOGA_RESPONSE_CACHE_TTL"];
 
 const createYogaOptions = () => ({
   typeDefs,
@@ -62,20 +52,20 @@ const createYogaOptions = () => ({
     {
       onExecute: ({ args }) => {
         log("GraphQL Execute", {
-          operation: args.operationName,
-          variables: args.variableValues,
+          operation: args["operationName"],
+          variables: args["variableValues"],
         });
       },
       onSubscribe: ({ args }) => {
         log("GraphQL Subscribe", {
-          operation: args.operationName,
-          variables: args.variableValues,
+          operation: args["operationName"],
+          variables: args["variableValues"],
         });
       },
       onError: ({ error }) => {
         err("GraphQL Error", {
-          error: error.message,
-          stack: error.stack,
+          error: error["message"],
+          stack: error["stack"],
         });
       },
     },
@@ -90,28 +80,24 @@ const app = new Elysia()
   .use(yoga(createYogaOptions()))
   .onRequest((context) => {
     log("Incoming request", {
-      method: context.request.method,
-      url: context.request.url,
+      method: context["request"]["method"],
+      url: context["request"]["url"],
     });
   })
   .onAfterHandle((context) => {
     log("Outgoing response", {
-      method: context.request.method,
-      url: context.request.url,
-      status: context.set.status,
+      method: context["request"]["method"],
+      url: context["request"]["url"],
+      status: context["set"]["status"],
     });
   });
 
 const server = app.listen(SERVER_PORT);
-
 log(`GraphQL server running on port:${SERVER_PORT}`);
 
-// Graceful shutdown handling
 const gracefulShutdown = async (signal: string) => {
   log(`Received ${signal}. Starting graceful shutdown...`);
-
   try {
-    // Close the server
     await server.stop();
     log("Server closed successfully");
     log("Graceful shutdown completed");
@@ -122,7 +108,6 @@ const gracefulShutdown = async (signal: string) => {
   }
 };
 
-// Listen for termination signals
 ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) => {
   process.on(signal, () => gracefulShutdown(signal));
 });
