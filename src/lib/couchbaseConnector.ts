@@ -12,6 +12,8 @@ import {
   QueryResult,
   StreamableRowPromise,
   QueryMetaData,
+  DocumentNotFoundError,
+  CouchbaseError,
 } from "couchbase";
 
 interface QueryableCluster extends Cluster {
@@ -23,15 +25,20 @@ interface QueryableCluster extends Cluster {
 
 export interface capellaConn {
   cluster: QueryableCluster;
-  bucket: Bucket;
-  scope: Scope;
-  collection: Collection;
-  connect: typeof connect;
+  bucket: (name: string) => Bucket;
+  scope: (bucket: string, name: string) => Scope;
+  collection: (bucket: string, scope: string, name: string) => Collection;
+  defaultBucket: Bucket;
+  defaultScope: Scope;
+  defaultCollection: Collection;
+  errors: {
+    DocumentNotFoundError: typeof DocumentNotFoundError;
+    CouchbaseError: typeof CouchbaseError;
+  };
 }
 
 export async function clusterConn(): Promise<capellaConn> {
   log("Attempting to connect to Couchbase...");
-
   try {
     const clusterConnStr: string = config.capella.COUCHBASE_URL;
     const username: string = config.capella.COUCHBASE_USERNAME;
@@ -51,7 +58,6 @@ export async function clusterConn(): Promise<capellaConn> {
       username: username,
       password: password,
     });
-
     log("Cluster connection established.");
 
     const bucket: Bucket = cluster.bucket(bucketName);
@@ -61,7 +67,21 @@ export async function clusterConn(): Promise<capellaConn> {
     const collection: Collection = scope.collection(collectionName);
     log(`Collection ${collectionName} accessed under scope ${scopeName}.`);
 
-    return { cluster, bucket, scope, collection, connect };
+    return {
+      cluster,
+      bucket: (name: string) => cluster.bucket(name),
+      scope: (bucket: string, name: string) =>
+        cluster.bucket(bucket).scope(name),
+      collection: (bucket: string, scope: string, name: string) =>
+        cluster.bucket(bucket).scope(scope).collection(name),
+      defaultBucket: bucket,
+      defaultScope: scope,
+      defaultCollection: collection,
+      errors: {
+        DocumentNotFoundError,
+        CouchbaseError,
+      },
+    };
   } catch (error) {
     err("Couchbase connection failed:", error);
     throw error;

@@ -2,7 +2,6 @@
 
 import { log, err } from "$utils/logger";
 import { getCluster } from "$lib/clusterProvider";
-import { DocumentNotFoundError } from "couchbase";
 
 const documentSearch = {
   Query: {
@@ -15,10 +14,7 @@ const documentSearch = {
     ): Promise<any[]> => {
       try {
         const { collections, keys } = args;
-        const connection = await getCluster().catch((error) => {
-          err("Error in getCluster:", error);
-          throw error;
-        });
+        const connection = await getCluster();
 
         const results = [];
 
@@ -46,9 +42,11 @@ const documentSearch = {
             });
 
             try {
-              const collectionRef = connection.bucket
-                .scope(scope)
-                .collection(collection);
+              const collectionRef = connection.collection(
+                bucket,
+                scope,
+                collection,
+              );
               const result = await collectionRef.get(key);
               const timeTaken = Date.now() - start;
 
@@ -64,7 +62,7 @@ const documentSearch = {
                 `Time taken to fetch document from ${bucket}.${scope}.${collection}: ${timeTaken}ms`,
               );
             } catch (error) {
-              if (error instanceof DocumentNotFoundError) {
+              if (error instanceof connection.errors.DocumentNotFoundError) {
                 log(
                   `Document with key ${key} not found in ${bucket}.${scope}.${collection}`,
                 );
@@ -75,9 +73,9 @@ const documentSearch = {
                   data: null,
                   timeTaken: Date.now() - start,
                 });
-              } else {
+              } else if (error instanceof connection.errors.CouchbaseError) {
                 err(
-                  `Error fetching document with key ${key} from ${bucket}.${scope}.${collection}:`,
+                  `Couchbase error fetching document with key ${key} from ${bucket}.${scope}.${collection}:`,
                   error,
                 );
                 results.push({
@@ -87,6 +85,19 @@ const documentSearch = {
                   data: null,
                   timeTaken: Date.now() - start,
                   error: error.message,
+                });
+              } else {
+                err(
+                  `Unexpected error fetching document with key ${key} from ${bucket}.${scope}.${collection}:`,
+                  error,
+                );
+                results.push({
+                  bucket,
+                  scope,
+                  collection,
+                  data: null,
+                  timeTaken: Date.now() - start,
+                  error: "Unexpected error occurred",
                 });
               }
             }
