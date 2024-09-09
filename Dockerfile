@@ -1,7 +1,7 @@
 # Dockerfile
 
 # use the official Bun image
-FROM oven/bun:1 AS base
+FROM oven/bun:latest AS base
 
 ARG BASE_URL
 ARG PORT

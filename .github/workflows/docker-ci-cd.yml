@@ -1,10 +1,14 @@
-name: Docker CI/CD with Bun
+name: Docker CI/CD with Bun and Snyk
 
 on:
   push:
     branches: ["master"]
   pull_request:
     branches: ["master"]
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
   build-and-deploy:
@@ -17,6 +21,59 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache Bun dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ github.repository }}-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-${{ github.repository }}-
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Create .env file
+        run: |
+          cat << EOF > .env
+          BASE_URL=${{ secrets.BASE_URL }}
+          PORT=${{ secrets.PORT }}
+          LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+          LOG_MAX_SIZE=${{ secrets.LOG_MAX_SIZE }}
+          LOG_MAX_FILES=${{ secrets.LOG_MAX_FILES }}
+          YOGA_RESPONSE_CACHE_TTL=${{ secrets.YOGA_RESPONSE_CACHE_TTL }}
+          COUCHBASE_URL=${{ secrets.COUCHBASE_URL }}
+          COUCHBASE_USERNAME=${{ secrets.COUCHBASE_USERNAME }}
+          COUCHBASE_PASSWORD=${{ secrets.COUCHBASE_PASSWORD }}
+          COUCHBASE_BUCKET=${{ secrets.COUCHBASE_BUCKET }}
+          COUCHBASE_SCOPE=${{ secrets.COUCHBASE_SCOPE }}
+          COUCHBASE_COLLECTION=${{ secrets.COUCHBASE_COLLECTION }}
+          SERVICE_NAME=${{ secrets.SERVICE_NAME }}
+          SERVICE_VERSION=${{ secrets.SERVICE_VERSION }}
+          DEPLOYMENT_ENVIRONMENT=${{ secrets.DEPLOYMENT_ENVIRONMENT }}
+          TRACES_ENDPOINT=${{ secrets.TRACES_ENDPOINT }}
+          METRICS_ENDPOINT=${{ secrets.METRICS_ENDPOINT }}
+          LOGS_ENDPOINT=${{ secrets.LOGS_ENDPOINT }}
+          METRIC_READER_INTERVAL=${{ secrets.METRIC_READER_INTERVAL }}
+          CONSOLE_METRIC_READER_INTERVAL=${{ secrets.CONSOLE_METRIC_READER_INTERVAL }}
+          EOF
+
+      - name: Run Snyk checks
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          export $(grep -v '^#' .env | xargs)
+          bun run snyk test --file=package.json --sarif-file-output=snyk.sarif
+          bun run snyk monitor --file=package.json
+
+      - name: Upload Snyk scan results to GitHub Code Scanning
+        if: hashFiles('snyk.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
+          category: snyk-code
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -27,60 +84,59 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        run: |
+          declare -a build_args=()
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ ! "$line" =~ ^\s*# && -n "$line" ]]; then
+              key=$(echo "$line" | cut -d '=' -f1)
+              value=$(echo "$line" | cut -d '=' -f2-)
+              build_args+=("--build-arg" "${key}=${value}")
+            fi
+          done < .env
+
+          echo "Debug: build_args=${build_args[*]}"
+
+          docker buildx build \
+            --push \
+            -t zx8086/capellaql:latest \
+            "${build_args[@]}" \
+            .
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          docker run --rm -e SNYK_TOKEN -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/app snyk/snyk:docker snyk container test zx8086/capellaql:latest --file=/app/Dockerfile --severity-threshold=high --sarif-file-output=/app/snyk-docker.sarif
+
+      - name: Run Snyk monitor for Docker image
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          docker run --rm -e SNYK_TOKEN -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/app snyk/snyk:docker snyk container monitor zx8086/capellaql:latest --file=/app/Dockerfile || true
+
+      - name: Upload Docker Snyk scan results to GitHub Code Scanning
+        if: hashFiles('snyk-docker.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: zx8086/capellaql:latest
-          build-args: |
-            BASE_URL="http://localhost"
-            PORT=4000
-            LOG_LEVEL=info
-            LOG_MAX_SIZE=20m
-            LOG_MAX_FILES=14d
-            CN_ROOT=/usr/src/app
-            YOGA_RESPONSE_CACHE_TTL=900000
-            COUCHBASE_URL=${{ secrets.COUCHBASE_URL }}
-            COUCHBASE_USERNAME=${{ secrets.COUCHBASE_USERNAME }}
-            COUCHBASE_PASSWORD=${{ secrets.COUCHBASE_PASSWORD }}
-            COUCHBASE_BUCKET=default
-            COUCHBASE_SCOPE=_default
-            COUCHBASE_COLLECTION=_default
-            SERVICE_NAME=Couchbase CapellaQL Service
-            SERVICE_VERSION=1.0.0
-            DEPLOYMENT_ENVIRONMENT=production
-            TRACES_ENDPOINT=https://otel-http-traces.siobytes.com
-            METRICS_ENDPOINT=https://otel-http-metrics.siobytes.com
-            LOGS_ENDPOINT=https://otel-http-logs.siobytes.com
-            METRIC_READER_INTERVAL=1800000
-            CONSOLE_METRIC_READER_INTERVAL=1800000
+          sarif_file: snyk-docker.sarif
+          category: snyk-docker
 
       - name: Deploy container
         run: |
           docker stop capellaql || true
           docker rm capellaql || true
           docker run -d --name capellaql \
-            -p 4000:4000 \
-            -e BASE_URL="http://localhost" \
-            -e PORT=4000 \
-            -e LOG_LEVEL=info \
-            -e LOG_MAX_SIZE=20m \
-            -e LOG_MAX_FILES=14d \
-            -e CN_ROOT=/usr/src/app \
-            -e YOGA_RESPONSE_CACHE_TTL=900000 \
-            -e COUCHBASE_URL=${{ secrets.COUCHBASE_URL }} \
-            -e COUCHBASE_USERNAME=${{ secrets.COUCHBASE_USERNAME }} \
-            -e COUCHBASE_PASSWORD=${{ secrets.COUCHBASE_PASSWORD }} \
-            -e COUCHBASE_BUCKET=default \
-            -e COUCHBASE_SCOPE=_default \
-            -e COUCHBASE_COLLECTION=_default \
-            -e SERVICE_NAME="Couchbase CapellaQL Service" \
-            -e SERVICE_VERSION=1.0.0 \
-            -e DEPLOYMENT_ENVIRONMENT=production \
-            -e TRACES_ENDPOINT=https://otel-http-traces.siobytes.com \
-            -e METRICS_ENDPOINT=https://otel-http-metrics.siobytes.com \
-            -e LOGS_ENDPOINT=https://otel-http-logs.siobytes.com \
-            -e METRIC_READER_INTERVAL=1800000 \
-            -e CONSOLE_METRIC_READER_INTERVAL=1800000 \
+            -p ${{ secrets.PORT }}:${{ secrets.PORT }} \
+            --env-file .env \
             zx8086/capellaql:latest
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f .env
+          rm -f snyk.sarif snyk-docker.sarif
+          docker image prune -f
+          docker volume prune -f
+          echo "Cleanup completed"
