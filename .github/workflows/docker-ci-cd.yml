@@ -123,14 +123,14 @@ jobs:
           sarif_file: snyk-docker.sarif
           category: snyk-docker
 
-      - name: Deploy container
-        run: |
-          docker stop capellaql || true
-          docker rm capellaql || true
-          docker run -d --name capellaql \
-            -p ${{ secrets.PORT }}:${{ secrets.PORT }} \
-            --env-file .env \
-            zx8086/capellaql:latest
+      # - name: Deploy container
+      #   run: |
+      #     docker stop capellaql || true
+      #     docker rm capellaql || true
+      #     docker run -d --name capellaql \
+      #       -p ${{ secrets.PORT }}:${{ secrets.PORT }} \
+      #       --env-file .env \
+      #       zx8086/capellaql:latest
 
       - name: Cleanup
         if: always()
