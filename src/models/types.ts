@@ -6,6 +6,7 @@ export interface ApplicationConfig {
   LOG_MAX_FILES: string;
   YOGA_RESPONSE_CACHE_TTL: number;
   PORT: number;
+  ENABLE_FILE_LOGGING: boolean;
 }
 
 export interface CapellaConfig {
@@ -18,6 +19,7 @@ export interface CapellaConfig {
 }
 
 export interface OpenTelemetryConfig {
+  ENABLE_OPENTELEMETRY: boolean;
   SERVICE_NAME: string;
   SERVICE_VERSION: string;
   DEPLOYMENT_ENVIRONMENT: string;

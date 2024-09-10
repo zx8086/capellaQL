@@ -1,6 +1,10 @@
 /* src/config.ts */
 
-import { getEnvOrThrow, getEnvNumberOrThrow } from "$utils/getEnv";
+import {
+  getEnvOrThrow,
+  getEnvNumberOrThrow,
+  getEnvBooleanOrThrow,
+} from "$utils/getEnv";
 import type { Config } from "$models/types";
 
 export const config: Config = {
@@ -10,6 +14,7 @@ export const config: Config = {
     LOG_MAX_FILES: getEnvOrThrow("LOG_MAX_FILES"),
     YOGA_RESPONSE_CACHE_TTL: getEnvNumberOrThrow("YOGA_RESPONSE_CACHE_TTL"),
     PORT: getEnvNumberOrThrow("PORT"),
+    ENABLE_FILE_LOGGING: getEnvBooleanOrThrow("ENABLE_FILE_LOGGING"),
   },
   capella: {
     COUCHBASE_URL: getEnvOrThrow("COUCHBASE_URL"),
@@ -20,6 +25,7 @@ export const config: Config = {
     COUCHBASE_COLLECTION: getEnvOrThrow("COUCHBASE_COLLECTION"),
   },
   openTelemetry: {
+    ENABLE_OPENTELEMETRY: getEnvBooleanOrThrow("ENABLE_OPENTELEMETRY"),
     SERVICE_NAME: getEnvOrThrow("SERVICE_NAME"),
     SERVICE_VERSION: getEnvOrThrow("SERVICE_VERSION"),
     DEPLOYMENT_ENVIRONMENT: getEnvOrThrow("DEPLOYMENT_ENVIRONMENT"),

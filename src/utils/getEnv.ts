@@ -1,7 +1,29 @@
 /* src/utils/getEnv.ts */
 
+let isBrowser = false;
+
+try {
+  isBrowser = Boolean(window);
+} catch (e) {
+  // Not in a browser environment
+}
+
+export function getEnvBooleanOrThrow(key: string): boolean {
+  const value = process.env[key];
+  if (value === undefined) {
+    throw new Error(`Environment variable ${key} is not defined`);
+  }
+  return value.toLowerCase() === "true";
+}
+
 export function getEnvOrThrow(key: string): string {
-  const value = Bun.env[key];
+  let value;
+  if (isBrowser) {
+    value = import.meta.env[key];
+  } else {
+    value = process.env[key];
+  }
+
   if (value === undefined) {
     throw new Error(`Required environment variable ${key} is not set`);
   }
