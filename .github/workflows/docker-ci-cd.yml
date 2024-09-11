@@ -33,8 +33,8 @@ jobs:
       - name: Install dependencies and run post-install scripts
         run: |
           bun install
+          bun pm untrusted
           bun pm trust --all
-          bun run postinstall
 
       - name: Create .env file
         run: |
