@@ -7,6 +7,7 @@ import dns from "dns";
 import { isIP } from "net";
 import os from "os";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
+import config from "../config";
 
 export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
   private totalExports: number = 0;
@@ -14,10 +15,13 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
   private lastLogTime: number = Date.now();
   private readonly logIntervalMs: number = 60000; // Log every minute
   private readonly url: string;
+  private totalMetricsExported: number = 0;
+  private lastMetricLogTime: number = Date.now();
+  private readonly metricLogIntervalMs: number = 60000; // Log every minute
 
-  constructor(config: OTLPExporterNodeConfigBase) {
-    super(config);
-    this.url = config.url || "http://localhost:4318/v1/metrics";
+  constructor(exporterConfig: OTLPExporterNodeConfigBase) {
+    super(exporterConfig);
+    this.url = exporterConfig.url || config.openTelemetry.METRICS_ENDPOINT;
   }
 
   private async checkNetworkConnectivity(): Promise<void> {
@@ -42,15 +46,19 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
     const freeMemory = os.freemem();
     const usedMemory = totalMemory - freeMemory;
     const memoryUsage = (usedMemory / totalMemory) * 100;
-
-    console.debug(`CPU Usage (1m average): ${cpuUsage.toFixed(2)}`);
-    console.debug(`Memory Usage: ${memoryUsage.toFixed(2)}%`);
-    console.debug(
-      `Total Memory: ${(totalMemory / 1024 / 1024 / 1024).toFixed(2)} GB`,
-    );
-    console.debug(
-      `Free Memory: ${(freeMemory / 1024 / 1024 / 1024).toFixed(2)} GB`,
-    );
+  
+    const processMemory = process.memoryUsage();
+    const processCpuUsage = process.cpuUsage();
+  
+    console.debug(`System CPU Usage (1m average): ${cpuUsage.toFixed(2)}`);
+    console.debug(`System Memory Usage: ${memoryUsage.toFixed(2)}%`);
+    console.debug(`Total System Memory: ${(totalMemory / 1024 / 1024 / 1024).toFixed(2)} GB`);
+    console.debug(`Free System Memory: ${(freeMemory / 1024 / 1024 / 1024).toFixed(2)} GB`);
+    console.debug(`Process RSS: ${(processMemory.rss / 1024 / 1024).toFixed(2)} MB`);
+    console.debug(`Process Heap Total: ${(processMemory.heapTotal / 1024 / 1024).toFixed(2)} MB`);
+    console.debug(`Process Heap Used: ${(processMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+    console.debug(`Process CPU User: ${(processCpuUsage.user / 1000000).toFixed(2)} seconds`);
+    console.debug(`Process CPU System: ${(processCpuUsage.system / 1000000).toFixed(2)} seconds`);
   }
 
   async export(
@@ -72,6 +80,7 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
               metrics.scopeMetrics.length,
               Date.now() - exportStartTime,
             );
+            this.logMetricSummary(metrics);
             resolve();
           } else {
             reject(result.error);
@@ -105,9 +114,7 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
     metricCount: number,
     duration: number,
   ): void {
-    console.error(
-      `Failed to export ${metricCount} metrics after ${duration}ms:`,
-    );
+    console.error(`Failed to export ${metricCount} metrics after ${duration}ms:`);
     if (error instanceof Error) {
       console.error(`Error name: ${error.name}`);
       console.error(`Error message: ${error.message}`);
@@ -133,6 +140,20 @@ Success Rate: ${successRate.toFixed(2)}%
 ============================================
       `);
       this.lastLogTime = currentTime;
+    }
+  }
+
+  private logMetricSummary(metrics: ResourceMetrics): void {
+    this.totalMetricsExported += metrics.scopeMetrics.reduce((total, scope) => total + scope.metrics.length, 0);
+    
+    const currentTime = Date.now();
+    if (currentTime - this.lastMetricLogTime >= this.metricLogIntervalMs) {
+      console.debug(`
+=== OpenTelemetry Metric Export Summary ===
+Total Metrics Exported: ${this.totalMetricsExported}
+============================================
+      `);
+      this.lastMetricLogTime = currentTime;
     }
   }
 }

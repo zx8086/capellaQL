@@ -1,6 +1,38 @@
 # Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
 version: v1.25.1
-ignore: {}
+ignore:
+  'npm:mime:20170907':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
+  'npm:ms:20151024':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
+  'npm:negotiator:20160616':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
+  'npm:qs:20140806-1':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
+  'npm:request:20160119':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
+  'npm:ws:20160920':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
+  'npm:qs:20140806':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
+  'npm:ws:20160104':
+    - '*':
+        reason: 'False positive or acceptable risk'
+        expires: 2024-12-31T00:00:00.000Z
 # patches apply the minimum changes required to fix a vulnerability
 patch:
   'npm:mime:20170907':

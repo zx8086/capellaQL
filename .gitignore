@@ -44,3 +44,5 @@ package-lock.json
 # logs
 logs
 /src/logs/*
+
+.vscode

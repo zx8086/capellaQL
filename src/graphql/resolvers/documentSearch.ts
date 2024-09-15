@@ -3,6 +3,15 @@
 import { log, err } from "$utils/logger";
 import { getCluster } from "$lib/clusterProvider";
 
+interface SearchResult {
+  bucket: string;
+  scope: string;
+  collection: string;
+  data: { id: string; [key: string]: any } | null;
+  timeTaken: number;
+  error?: string;
+}
+
 const documentSearch = {
   Query: {
     searchDocuments: async (
@@ -11,12 +20,12 @@ const documentSearch = {
         collections: { bucket: string; scope: string; collection: string }[];
         keys: string[];
       },
-    ): Promise<any[]> => {
+    ): Promise<SearchResult[]> => {
       try {
         const { collections, keys } = args;
         const connection = await getCluster();
 
-        const results = [];
+        const results: SearchResult[] = [];
 
         for (const key of keys) {
           for (const { bucket, scope, collection } of collections) {

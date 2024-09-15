@@ -20,6 +20,8 @@ import { MonitoredOTLPTraceExporter } from "./otlp/MonitoredOTLPTraceExporter";
 import { MonitoredOTLPMetricExporter } from "./otlp/MonitoredOTLPMetricExporter";
 import { MonitoredOTLPLogExporter } from "./otlp/MonitoredOTLPLogExporter";
 
+import type { Counter, Histogram } from "@opentelemetry/api";
+
 import {
   MeterProvider,
   PeriodicExportingMetricReader,
@@ -63,7 +65,7 @@ if (INSTRUMENTATION_ENABLED) {
     console.log("Initializing OpenTelemetry SDK...");
 
     // Set up diagnostics logging with increased verbosity
-    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
     // Create OTLP exporters with updated configurations
     const traceExporter = new MonitoredOTLPTraceExporter({
@@ -199,4 +201,29 @@ export function getMeter(): Meter | undefined {
     );
   }
   return undefined;
+}
+
+let httpRequestCounter: Counter | undefined;
+let httpResponseTimeHistogram: Histogram | undefined;
+
+export function initializeHttpMetrics() {
+  if (INSTRUMENTATION_ENABLED) {
+    const meter = getMeter();
+    if (meter) {
+      httpRequestCounter = meter.createCounter('http_requests_total', {
+        description: 'Count of HTTP requests',
+      });
+      httpResponseTimeHistogram = meter.createHistogram('http_response_time_seconds', {
+        description: 'HTTP response time in seconds',
+      });
+    }
+  }
+}
+
+export function recordHttpRequest(method: string, route: string) {
+  httpRequestCounter?.add(1, { method, route });
+}
+
+export function recordHttpResponseTime(method: string, route: string, durationMs: number) {
+  httpResponseTimeHistogram?.record(durationMs / 1000, { method, route });
 }

@@ -10,6 +10,7 @@ import { useResponseCache } from "@graphql-yoga/plugin-response-cache";
 import { log, err } from "$utils/logger";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { initializeHttpMetrics, recordHttpRequest, recordHttpResponseTime } from "./instrumentation";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +75,7 @@ const createYogaOptions = () => ({
 });
 
 const healthCheck = new Elysia().get("/health", () => "HEALTHY");
+initializeHttpMetrics();
 
 const app = new Elysia()
   .onStart(() => log("The server has started!"))
@@ -81,16 +83,27 @@ const app = new Elysia()
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
   .onRequest((context) => {
-    log("Incoming request", {
-      method: context["request"]["method"],
-      url: context["request"]["url"],
-    });
+    const startTime = Date.now();
+    context.store = { startTime };
+    const method = context.request.method;
+    const url = new URL(context.request.url);
+    const route = url.pathname;
+    recordHttpRequest(method, route);
+    log("Incoming request", { method, url: context.request.url });
   })
   .onAfterHandle((context) => {
+    const endTime = Date.now();
+    const startTime = (context.store as { startTime: number })?.startTime ?? 0;
+    const duration = endTime - startTime;
+    const method = context.request.method;
+    const url = new URL(context.request.url);
+    const route = url.pathname;
+    recordHttpResponseTime(method, route, duration);
     log("Outgoing response", {
-      method: context["request"]["method"],
-      url: context["request"]["url"],
-      status: context["set"]["status"],
+      method: context.request.method,
+      url: context.request.url,
+      status: context.set.status,
+      duration: `${duration}ms`,
     });
   });
 
