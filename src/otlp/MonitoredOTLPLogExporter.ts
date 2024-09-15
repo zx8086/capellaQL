@@ -1,17 +1,39 @@
-/* src/MonitoredOTLPLogExporter.ts */
+/* src/otlp/MonitoredOTLPLogExporter.ts */
 
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { type ReadableLogRecord } from "@opentelemetry/sdk-logs";
+import type { ReadableLogRecord } from "@opentelemetry/sdk-logs";
 import { type ExportResult, ExportResultCode } from "@opentelemetry/core";
 import dns from "dns";
 import { isIP } from "net";
 import os from "os";
+import { otlpConfig } from "./otlpConfig";
+import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
+import config from "../config";
 
 export class MonitoredOTLPLogExporter extends OTLPLogExporter {
   private totalExports: number = 0;
   private successfulExports: number = 0;
   private lastLogTime: number = Date.now();
-  private readonly logIntervalMs: number = 60000; // Log every minute
+  private readonly logIntervalMs: number;
+  public readonly url: string; // Changed to public
+
+  constructor(exporterConfig: OTLPExporterNodeConfigBase) {
+    super(exporterConfig);
+    this.url = exporterConfig.url || config.openTelemetry.LOGS_ENDPOINT;
+    console.log(`${this.constructor.name} initialized with URL: ${this.url}`);
+
+    this.logIntervalMs = otlpConfig.logIntervalMs;
+    if (typeof this.logIntervalMs !== "number" || isNaN(this.logIntervalMs)) {
+      console.warn(
+        `Invalid logIntervalMs: ${this.logIntervalMs}. Using default of 300000ms.`,
+      );
+      this.logIntervalMs = 300000; // 5 minutes default
+    } else {
+      console.log(
+        `${this.constructor.name} log interval: ${this.logIntervalMs}ms`,
+      );
+    }
+  }
 
   private async checkNetworkConnectivity(): Promise<void> {
     const url = new URL(this.url);
@@ -29,26 +51,39 @@ export class MonitoredOTLPLogExporter extends OTLPLogExporter {
     }
   }
 
-
   private logSystemResources(): void {
     const cpuUsage = os.loadavg()[0];
     const totalMemory = os.totalmem();
     const freeMemory = os.freemem();
     const usedMemory = totalMemory - freeMemory;
     const memoryUsage = (usedMemory / totalMemory) * 100;
-  
+
     const processMemory = process.memoryUsage();
     const processCpuUsage = process.cpuUsage();
-  
+
     console.debug(`System CPU Usage (1m average): ${cpuUsage.toFixed(2)}`);
     console.debug(`System Memory Usage: ${memoryUsage.toFixed(2)}%`);
-    console.debug(`Total System Memory: ${(totalMemory / 1024 / 1024 / 1024).toFixed(2)} GB`);
-    console.debug(`Free System Memory: ${(freeMemory / 1024 / 1024 / 1024).toFixed(2)} GB`);
-    console.debug(`Process RSS: ${(processMemory.rss / 1024 / 1024).toFixed(2)} MB`);
-    console.debug(`Process Heap Total: ${(processMemory.heapTotal / 1024 / 1024).toFixed(2)} MB`);
-    console.debug(`Process Heap Used: ${(processMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
-    console.debug(`Process CPU User: ${(processCpuUsage.user / 1000000).toFixed(2)} seconds`);
-    console.debug(`Process CPU System: ${(processCpuUsage.system / 1000000).toFixed(2)} seconds`);
+    console.debug(
+      `Total System Memory: ${(totalMemory / 1024 / 1024 / 1024).toFixed(2)} GB`,
+    );
+    console.debug(
+      `Free System Memory: ${(freeMemory / 1024 / 1024 / 1024).toFixed(2)} GB`,
+    );
+    console.debug(
+      `Process RSS: ${(processMemory.rss / 1024 / 1024).toFixed(2)} MB`,
+    );
+    console.debug(
+      `Process Heap Total: ${(processMemory.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+    );
+    console.debug(
+      `Process Heap Used: ${(processMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+    );
+    console.debug(
+      `Process CPU User: ${(processCpuUsage.user / 1000000).toFixed(2)} seconds`,
+    );
+    console.debug(
+      `Process CPU System: ${(processCpuUsage.system / 1000000).toFixed(2)} seconds`,
+    );
   }
 
   async export(
@@ -110,14 +145,19 @@ export class MonitoredOTLPLogExporter extends OTLPLogExporter {
 
   private periodicLogging(): void {
     const currentTime = Date.now();
-    if (currentTime - this.lastLogTime >= this.logIntervalMs) {
+    const timeSinceLastLog = currentTime - this.lastLogTime;
+    console.log(
+      `Time since last log: ${timeSinceLastLog}ms, Interval: ${this.logIntervalMs}ms`,
+    );
+
+    if (timeSinceLastLog >= this.logIntervalMs) {
       const successRate = (this.successfulExports / this.totalExports) * 100;
       console.debug(`
-=== OpenTelemetry Log Export Statistics ===
+=== OpenTelemetry Logs Export Statistics ===
 Total Exports: ${this.totalExports}
 Successful Exports: ${this.successfulExports}
 Success Rate: ${successRate.toFixed(2)}%
-============================================
+========================================
       `);
       this.lastLogTime = currentTime;
     }

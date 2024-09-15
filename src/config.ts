@@ -30,7 +30,7 @@ export const config: Config = {
     SERVICE_VERSION: getEnvOrThrow("SERVICE_VERSION"),
     DEPLOYMENT_ENVIRONMENT: getEnvOrThrow("DEPLOYMENT_ENVIRONMENT"),
     TRACES_ENDPOINT: getEnvOrThrow("TRACES_ENDPOINT"),
-    METRICS_ENDPOINT: getEnvOrThrow("METRICS_ENDPOINT"),
+    METRICS_ENDPOINT: "https://otel-http-metrics.siobytes.com",
     LOGS_ENDPOINT: getEnvOrThrow("LOGS_ENDPOINT"),
     METRIC_READER_INTERVAL: getEnvNumberOrThrow("METRIC_READER_INTERVAL"),
   },

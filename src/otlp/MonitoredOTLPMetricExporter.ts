@@ -1,4 +1,4 @@
-/* src/MonitoredOTLPMetricExporter.ts */
+/* src/otlp/MonitoredOTLPMetricExporter.ts */
 
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import type { ResourceMetrics } from "@opentelemetry/sdk-metrics";
@@ -8,20 +8,31 @@ import { isIP } from "net";
 import os from "os";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import config from "../config";
+import { otlpConfig } from "./otlpConfig";
 
 export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
   private totalExports: number = 0;
   private successfulExports: number = 0;
   private lastLogTime: number = Date.now();
-  private readonly logIntervalMs: number = 60000; // Log every minute
+  private readonly logIntervalMs: number;
   private readonly url: string;
-  private totalMetricsExported: number = 0;
-  private lastMetricLogTime: number = Date.now();
-  private readonly metricLogIntervalMs: number = 60000; // Log every minute
 
   constructor(exporterConfig: OTLPExporterNodeConfigBase) {
     super(exporterConfig);
     this.url = exporterConfig.url || config.openTelemetry.METRICS_ENDPOINT;
+    console.log(`${this.constructor.name} initialized with URL: ${this.url}`);
+
+    this.logIntervalMs = otlpConfig.logIntervalMs;
+    if (typeof this.logIntervalMs !== "number" || isNaN(this.logIntervalMs)) {
+      console.warn(
+        `Invalid logIntervalMs: ${this.logIntervalMs}. Using default of 300000ms.`,
+      );
+      this.logIntervalMs = 300000; // 5 minutes default
+    } else {
+      console.log(
+        `${this.constructor.name} log interval: ${this.logIntervalMs}ms`,
+      );
+    }
   }
 
   private async checkNetworkConnectivity(): Promise<void> {
@@ -46,25 +57,22 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
     const freeMemory = os.freemem();
     const usedMemory = totalMemory - freeMemory;
     const memoryUsage = (usedMemory / totalMemory) * 100;
-  
-    const processMemory = process.memoryUsage();
-    const processCpuUsage = process.cpuUsage();
-  
-    console.debug(`System CPU Usage (1m average): ${cpuUsage.toFixed(2)}`);
-    console.debug(`System Memory Usage: ${memoryUsage.toFixed(2)}%`);
-    console.debug(`Total System Memory: ${(totalMemory / 1024 / 1024 / 1024).toFixed(2)} GB`);
-    console.debug(`Free System Memory: ${(freeMemory / 1024 / 1024 / 1024).toFixed(2)} GB`);
-    console.debug(`Process RSS: ${(processMemory.rss / 1024 / 1024).toFixed(2)} MB`);
-    console.debug(`Process Heap Total: ${(processMemory.heapTotal / 1024 / 1024).toFixed(2)} MB`);
-    console.debug(`Process Heap Used: ${(processMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
-    console.debug(`Process CPU User: ${(processCpuUsage.user / 1000000).toFixed(2)} seconds`);
-    console.debug(`Process CPU System: ${(processCpuUsage.system / 1000000).toFixed(2)} seconds`);
+
+    console.debug(`CPU Usage (1m average): ${cpuUsage.toFixed(2)}`);
+    console.debug(`Memory Usage: ${memoryUsage.toFixed(2)}%`);
+    console.debug(
+      `Total Memory: ${(totalMemory / 1024 / 1024 / 1024).toFixed(2)} GB`,
+    );
+    console.debug(
+      `Free Memory: ${(freeMemory / 1024 / 1024 / 1024).toFixed(2)} GB`,
+    );
   }
 
   async export(
     metrics: ResourceMetrics,
     resultCallback: (result: ExportResult) => void,
   ): Promise<void> {
+    console.debug("Starting metric export");
     this.totalExports++;
     const exportStartTime = Date.now();
 
@@ -80,7 +88,6 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
               metrics.scopeMetrics.length,
               Date.now() - exportStartTime,
             );
-            this.logMetricSummary(metrics);
             resolve();
           } else {
             reject(result.error);
@@ -114,7 +121,9 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
     metricCount: number,
     duration: number,
   ): void {
-    console.error(`Failed to export ${metricCount} metrics after ${duration}ms:`);
+    console.error(
+      `Failed to export ${metricCount} metrics after ${duration}ms:`,
+    );
     if (error instanceof Error) {
       console.error(`Error name: ${error.name}`);
       console.error(`Error message: ${error.message}`);
@@ -122,38 +131,25 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
     } else {
       console.error(`Unexpected error type:`, error);
     }
-    console.error(
-      `Current memory usage: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
-    );
-    console.error(`Current time: ${new Date().toISOString()}`);
   }
 
   private periodicLogging(): void {
     const currentTime = Date.now();
-    if (currentTime - this.lastLogTime >= this.logIntervalMs) {
+    const timeSinceLastLog = currentTime - this.lastLogTime;
+    console.log(
+      `Time since last log: ${timeSinceLastLog}ms, Interval: ${this.logIntervalMs}ms`,
+    );
+
+    if (timeSinceLastLog >= this.logIntervalMs) {
       const successRate = (this.successfulExports / this.totalExports) * 100;
       console.debug(`
-=== OpenTelemetry Metric Export Statistics ===
+=== OpenTelemetry Metrics Export Statistics ===
 Total Exports: ${this.totalExports}
 Successful Exports: ${this.successfulExports}
 Success Rate: ${successRate.toFixed(2)}%
-============================================
+========================================
       `);
       this.lastLogTime = currentTime;
-    }
-  }
-
-  private logMetricSummary(metrics: ResourceMetrics): void {
-    this.totalMetricsExported += metrics.scopeMetrics.reduce((total, scope) => total + scope.metrics.length, 0);
-    
-    const currentTime = Date.now();
-    if (currentTime - this.lastMetricLogTime >= this.metricLogIntervalMs) {
-      console.debug(`
-=== OpenTelemetry Metric Export Summary ===
-Total Metrics Exported: ${this.totalMetricsExported}
-============================================
-      `);
-      this.lastMetricLogTime = currentTime;
     }
   }
 }

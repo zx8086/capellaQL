@@ -75,10 +75,12 @@ const createYogaOptions = () => ({
 });
 
 const healthCheck = new Elysia().get("/health", () => "HEALTHY");
-initializeHttpMetrics();
 
 const app = new Elysia()
-  .onStart(() => log("The server has started!"))
+  .onStart(() => {
+    log("The server has started!");
+    initializeHttpMetrics();
+  })
   .use(cors())
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
@@ -95,10 +97,7 @@ const app = new Elysia()
     const endTime = Date.now();
     const startTime = (context.store as { startTime: number })?.startTime ?? 0;
     const duration = endTime - startTime;
-    const method = context.request.method;
-    const url = new URL(context.request.url);
-    const route = url.pathname;
-    recordHttpResponseTime(method, route, duration);
+    recordHttpResponseTime(duration);
     log("Outgoing response", {
       method: context.request.method,
       url: context.request.url,
