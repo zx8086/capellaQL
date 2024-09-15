@@ -2,6 +2,7 @@
 
 import { Elysia } from "elysia";
 import config from "./config";
+import { cors } from "@elysiajs/cors";
 import { yoga } from "@elysiajs/graphql-yoga";
 import typeDefs from "./graphql/typeDefs";
 import resolvers from "./graphql/resolvers";
@@ -76,6 +77,7 @@ const healthCheck = new Elysia().get("/health", () => "HEALTHY");
 
 const app = new Elysia()
   .onStart(() => log("The server has started!"))
+  .use(cors())
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
   .onRequest((context) => {

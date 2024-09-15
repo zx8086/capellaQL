@@ -63,7 +63,7 @@ if (INSTRUMENTATION_ENABLED) {
     console.log("Initializing OpenTelemetry SDK...");
 
     // Set up diagnostics logging with increased verbosity
-    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
+    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
     // Create OTLP exporters with updated configurations
     const traceExporter = new MonitoredOTLPTraceExporter({
