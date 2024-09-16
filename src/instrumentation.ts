@@ -20,6 +20,9 @@ import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { MonitoredOTLPTraceExporter } from "./otlp/MonitoredOTLPTraceExporter";
 import { MonitoredOTLPMetricExporter } from "./otlp/MonitoredOTLPMetricExporter";
 import { MonitoredOTLPLogExporter } from "./otlp/MonitoredOTLPLogExporter";
+import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type { PushMetricExporter } from "@opentelemetry/sdk-metrics";
+import type { LogRecordExporter } from "@opentelemetry/sdk-logs";
 import {
   MeterProvider,
   PeriodicExportingMetricReader,
@@ -99,8 +102,9 @@ async function initializeOpenTelemetry() {
         url: config.openTelemetry.TRACES_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
-      });
-      console.log("Metric exporter created with config:", {
+      }) as unknown as SpanExporter;
+
+      console.log("Traces exporter created with config:", {
         url: config.openTelemetry.TRACES_ENDPOINT,
         interval: config.openTelemetry.METRIC_READER_INTERVAL,
         summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
@@ -110,8 +114,9 @@ async function initializeOpenTelemetry() {
         url: config.openTelemetry.METRICS_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
-      });
-      console.log("Metric exporter created with config:", {
+      }) as unknown as PushMetricExporter;
+
+      console.log("Metrics exporter created with config:", {
         url: config.openTelemetry.METRICS_ENDPOINT,
         interval: config.openTelemetry.METRIC_READER_INTERVAL,
         summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
@@ -121,8 +126,9 @@ async function initializeOpenTelemetry() {
         url: config.openTelemetry.LOGS_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
-      });
-      console.log("Metric exporter created with config:", {
+      }) as unknown as LogRecordExporter;
+
+      console.log("Logs exporter created with config:", {
         url: config.openTelemetry.LOGS_ENDPOINT,
         interval: config.openTelemetry.METRIC_READER_INTERVAL,
         summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
@@ -160,7 +166,7 @@ async function initializeOpenTelemetry() {
         if (!meter) {
           console.warn("Failed to get meter from global MeterProvider");
         } else {
-          console.debug("Meter created successfully");
+          console.log("Metrics Meter created successfully");
         }
       } catch (error) {
         console.error("Error getting meter:", error);
@@ -210,7 +216,7 @@ async function initializeOpenTelemetry() {
           .then(() => {
             clearTimeout(shutdownTimeout);
             console.log("SDK shut down successfully");
-            process.exit(0);
+            setTimeout(() => process.exit(0), 1000);
           })
           .catch((error) => {
             clearTimeout(shutdownTimeout);
@@ -224,6 +230,14 @@ async function initializeOpenTelemetry() {
   } else {
     console.log("OpenTelemetry instrumentation is disabled");
   }
+
+  if (INSTRUMENTATION_ENABLED) {
+    if (!httpRequestCounter || !httpResponseTimeHistogram) {
+      console.error("HTTP metrics not properly initialized");
+    } else {
+      console.log("HTTP metrics initialized successfully");
+    }
+  }
 }
 
 initializeOpenTelemetry().catch(console.error);
@@ -235,27 +249,29 @@ export function getMeter(): Meter | undefined {
 }
 
 export function recordHttpRequest(method: string, route: string) {
-  if (INSTRUMENTATION_ENABLED && httpRequestCounter) {
-    httpRequestCounter.add(1, { method, route });
-    console.debug(`Recorded HTTP request: method=${method}, route=${route}`);
-  } else if (!INSTRUMENTATION_ENABLED) {
-    console.debug(`Skipped recording HTTP request: instrumentation disabled`);
+  if (INSTRUMENTATION_ENABLED) {
+    if (httpRequestCounter) {
+      httpRequestCounter.add(1, { method, route });
+      console.debug(`Recorded HTTP request: method=${method}, route=${route}`);
+    } else {
+      console.error("HTTP request counter not initialized");
+    }
   } else {
-    console.debug(`Skipped recording HTTP request: counter not initialized`);
+    console.debug(`Skipped recording HTTP request: instrumentation disabled`);
   }
 }
 
 export function recordHttpResponseTime(duration: number) {
-  if (INSTRUMENTATION_ENABLED && httpResponseTimeHistogram) {
-    httpResponseTimeHistogram.record(duration / 1000); // Convert ms to seconds
-    console.debug(`Recorded HTTP response time: ${duration}ms`);
-  } else if (!INSTRUMENTATION_ENABLED) {
-    console.debug(
-      `Skipped recording HTTP response time: instrumentation disabled`,
-    );
+  if (INSTRUMENTATION_ENABLED) {
+    if (httpResponseTimeHistogram) {
+      httpResponseTimeHistogram.record(duration / 1000);
+      console.debug(`Recorded HTTP response time: ${duration}ms`);
+    } else {
+      console.error("HTTP response time histogram not initialized");
+    }
   } else {
     console.debug(
-      `Skipped recording HTTP response time: histogram not initialized`,
+      `Skipped recording HTTP response time: instrumentation disabled`,
     );
   }
 }
