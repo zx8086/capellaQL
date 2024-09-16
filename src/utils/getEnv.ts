@@ -17,7 +17,7 @@ export function getEnvBooleanOrThrow(key: string): boolean {
 }
 
 export function getEnvOrThrow(key: string): string {
-  let value;
+  let value: any;
   if (isBrowser) {
     value = import.meta.env[key];
   } else {
