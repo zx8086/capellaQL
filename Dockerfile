@@ -96,7 +96,7 @@ COPY --from=prerelease /usr/src/app/deps ./deps
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app
 
-# run the app
+# run the application
 USER bun
 EXPOSE 4000/tcp
 ENV CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
