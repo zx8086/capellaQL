@@ -64,7 +64,7 @@ const commonConfig = {
 
 export function initializeHttpMetrics() {
   if (INSTRUMENTATION_ENABLED && meter) {
-    console.debug("Initializing HTTP metrics");
+    console.log("Initializing HTTP metrics");
     try {
       httpRequestCounter = meter.createCounter("http_requests_total", {
         description: "Count of HTTP requests",
@@ -77,14 +77,14 @@ export function initializeHttpMetrics() {
           description: "HTTP response time in seconds",
         },
       );
-      console.debug("HTTP response time histogram created");
+      console.log("HTTP response time histogram created");
 
-      console.debug("HTTP metrics initialized successfully");
+      console.log("HTTP metrics initialized successfully");
     } catch (error) {
       console.error("Error initializing HTTP metrics:", error);
     }
   } else {
-    console.debug(
+    console.log(
       "HTTP metrics initialization skipped (instrumentation disabled or meter not available)",
     );
   }
@@ -257,7 +257,7 @@ export function recordHttpRequest(method: string, route: string) {
       console.error("HTTP request counter not initialized");
     }
   } else {
-    console.debug(`Skipped recording HTTP request: instrumentation disabled`);
+    console.log(`Skipped recording HTTP request: instrumentation disabled`);
   }
 }
 
