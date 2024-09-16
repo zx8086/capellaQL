@@ -91,7 +91,6 @@ RUN echo "globalThis.ENV_TRUE = ['true', '1', 'y', 'yes', 'on'];" >> /usr/src/ap
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=prerelease /usr/src/app/dist/ ./dist/
 COPY --from=prerelease /usr/src/app/package.json .
-
 COPY --from=prerelease /usr/src/app/deps ./deps
 
 # Set ownership of app directory to bun user

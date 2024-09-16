@@ -15,7 +15,7 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
   private successfulExports: number = 0;
   private lastLogTime: number = Date.now();
   private readonly logIntervalMs: number;
-  private readonly url: string;
+  public readonly url: string;
 
   constructor(exporterConfig: OTLPExporterNodeConfigBase) {
     super(exporterConfig);
@@ -27,7 +27,7 @@ export class MonitoredOTLPMetricExporter extends OTLPMetricExporter {
       console.warn(
         `Invalid logIntervalMs: ${this.logIntervalMs}. Using default of 300000ms.`,
       );
-      this.logIntervalMs = 300000; // 5 minutes default
+      this.logIntervalMs = config.openTelemetry.SUMMARY_LOG_INTERVAL;
     } else {
       console.log(
         `${this.constructor.name} log interval: ${this.logIntervalMs}ms`,

@@ -55,7 +55,8 @@
   "type": "module",
   "trustedDependencies": [
     "couchbase",
-    "protobufjs"
+    "protobufjs",
+    "ws"
   ],
   "snyk": true
 }
