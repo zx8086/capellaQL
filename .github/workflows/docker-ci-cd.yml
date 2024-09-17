@@ -114,7 +114,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          npm install -g snyk
+          bun install -g snyk
           snyk container test zx8086/capellaql:latest --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-docker.sarif
 
       - name: Run Snyk monitor for Docker image

@@ -14,7 +14,7 @@ import { Resource } from "@opentelemetry/resources";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
+  // SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
 } from "@opentelemetry/semantic-conventions";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { MonitoredOTLPTraceExporter } from "./otlp/MonitoredOTLPTraceExporter";
@@ -37,22 +37,28 @@ import { GraphQLInstrumentation } from "@opentelemetry/instrumentation-graphql";
 import * as api from "@opentelemetry/api-logs";
 import config from "./config";
 
+console.log("Staring Instrumentation............");
+
 const INSTRUMENTATION_ENABLED =
   (process.env["ENABLE_OPENTELEMETRY"] as string) === "true";
 console.log("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
+
+console.log("ENABLE_OPENTELEMETRY value:", process.env.ENABLE_OPENTELEMETRY);
+console.log("Parsed INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
 
 let sdk: NodeSDK | undefined;
 let meter: Meter | undefined;
 let httpRequestCounter: Counter | undefined;
 let httpResponseTimeHistogram: Histogram | undefined;
+let isInitialized = false;
 
 const createResource = async () => {
   return Resource.default().merge(
     new Resource({
       [ATTR_SERVICE_NAME]: config.openTelemetry.SERVICE_NAME,
       [ATTR_SERVICE_VERSION]: config.openTelemetry.SERVICE_VERSION,
-      [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]:
-        config.openTelemetry.DEPLOYMENT_ENVIRONMENT,
+      // [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]:
+      //   config.openTelemetry.DEPLOYMENT_ENVIRONMENT,
     }),
   );
 };
@@ -94,7 +100,7 @@ async function initializeOpenTelemetry() {
   if (INSTRUMENTATION_ENABLED) {
     try {
       console.log("Initializing OpenTelemetry SDK...");
-      diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
+      diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
       const resource = await createResource();
 
@@ -238,6 +244,8 @@ async function initializeOpenTelemetry() {
       console.log("HTTP metrics initialized successfully");
     }
   }
+
+  isInitialized = true;
 }
 
 initializeOpenTelemetry().catch(console.error);
@@ -258,11 +266,16 @@ export function recordHttpRequest(method: string, route: string) {
     }
   } else {
     console.log(`Skipped recording HTTP request: instrumentation disabled`);
+    console.log(
+      "ENABLE_OPENTELEMETRY env var:",
+      process.env["ENABLE_OPENTELEMETRY"],
+    );
+    console.log("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
   }
 }
 
 export function recordHttpResponseTime(duration: number) {
-  if (INSTRUMENTATION_ENABLED) {
+  if (INSTRUMENTATION_ENABLED && isInitialized) {
     if (httpResponseTimeHistogram) {
       httpResponseTimeHistogram.record(duration / 1000);
       console.debug(`Recorded HTTP response time: ${duration}ms`);
