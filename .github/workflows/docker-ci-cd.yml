@@ -114,14 +114,15 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          docker run --rm -e SNYK_TOKEN -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/app snyk/snyk:docker snyk container test zx8086/capellaql:latest --file=/app/Dockerfile --severity-threshold=high --sarif-file-output=/app/snyk-docker.sarif
+          npm install -g snyk
+          snyk container test zx8086/capellaql:latest --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-docker.sarif
 
       - name: Run Snyk monitor for Docker image
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          docker run --rm -e SNYK_TOKEN -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/app snyk/snyk:docker snyk container monitor zx8086/capellaql:latest --file=/app/Dockerfile || true
+          snyk container monitor zx8086/capellaql:latest --file=Dockerfile || true
 
       - name: Upload Docker Snyk scan results to GitHub Code Scanning
         if: hashFiles('snyk-docker.sarif') != ''
