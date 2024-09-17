@@ -19,7 +19,6 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Define types for custom global properties using index signatures
 declare global {
   var globalThis: {
     [key: string]: any;
