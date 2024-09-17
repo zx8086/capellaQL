@@ -43,7 +43,7 @@ const INSTRUMENTATION_ENABLED =
   (process.env["ENABLE_OPENTELEMETRY"] as string) === "true";
 console.log("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
 
-console.log("ENABLE_OPENTELEMETRY value:", process.env.ENABLE_OPENTELEMETRY);
+console.log("ENABLE_OPENTELEMETRY value:", process.env["ENABLE_OPENTELEMETRY"]);
 console.log("Parsed INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
 
 let sdk: NodeSDK | undefined;
@@ -100,7 +100,7 @@ async function initializeOpenTelemetry() {
   if (INSTRUMENTATION_ENABLED) {
     try {
       console.log("Initializing OpenTelemetry SDK...");
-      diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+      diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
       const resource = await createResource();
 

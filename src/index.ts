@@ -15,6 +15,7 @@ import {
   recordHttpRequest,
   recordHttpResponseTime,
 } from "./instrumentation";
+import { ulid } from "ulid";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +46,32 @@ const YOGA_RESPONSE_CACHE_TTL = config.application["YOGA_RESPONSE_CACHE_TTL"];
 const ALLOWED_ORIGINS = config.application.ALLOWED_ORIGINS;
 const IS_DEVELOPMENT =
   config.openTelemetry.DEPLOYMENT_ENVIRONMENT === "development";
+
+// Simple in-memory rate limiting
+const RATE_LIMIT = 5; // requests
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute in milliseconds
+
+const rateLimitStore = new Map<string, { count: number; timestamp: number }>();
+
+function checkRateLimit(clientIp: string): boolean {
+  const now = Date.now();
+  const clientData = rateLimitStore.get(clientIp) || {
+    count: 0,
+    timestamp: now,
+  };
+
+  if (now - clientData.timestamp > RATE_LIMIT_WINDOW) {
+    // Reset if the window has passed
+    clientData.count = 1;
+    clientData.timestamp = now;
+  } else {
+    clientData.count++;
+  }
+
+  rateLimitStore.set(clientIp, clientData);
+
+  return clientData.count > RATE_LIMIT;
+}
 
 const createYogaOptions = () => ({
   typeDefs,
@@ -80,7 +107,22 @@ const createYogaOptions = () => ({
   ],
 });
 
-const healthCheck = new Elysia().get("/health", () => "HEALTHY");
+const healthCheck = new Elysia().get("/health", async () => {
+  log("Health check called");
+
+  // Example: Check database connection
+  // const isDatabaseConnected = await checkDatabaseConnection();
+
+  // Example: Check external service
+  // const isExternalServiceAvailable = await checkExternalService();
+
+  // You can return a more detailed health status if needed
+  return {
+    status: "HEALTHY",
+    // database: isDatabaseConnected ? "Connected" : "Disconnected",
+    // externalService: isExternalServiceAvailable ? "Available" : "Unavailable",
+  };
+});
 
 const app = new Elysia()
   .onStart(() => {
@@ -95,7 +137,27 @@ const app = new Elysia()
   )
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
+  .onRequest(({ request, set }) => {
+    const clientIp =
+      request.headers.get("x-forwarded-for") ||
+      request.headers.get("cf-connecting-ip") ||
+      "unknown";
+
+    if (checkRateLimit(clientIp)) {
+      set.status = 429;
+      return "Too Many Requests";
+    }
+  })
   .onRequest((context) => {
+    console.log("All headers:", context.request.headers);
+    const requestId = ulid();
+    context.set.headers["X-Request-ID"] = requestId;
+
+    const clientIp =
+      context.request.headers.get("x-forwarded-for") ||
+      context.request.headers.get("cf-connecting-ip") ||
+      "unknown";
+
     const cspDirectives = [
       "default-src 'self'",
       `script-src 'self' ${IS_DEVELOPMENT ? "'unsafe-inline'" : ""}`,
@@ -140,14 +202,24 @@ const app = new Elysia()
     const url = new URL(context.request.url);
     const route = url.pathname;
     recordHttpRequest(method, route);
-    log("Incoming request", { method, url: context.request.url });
+
+    log("Incoming request", {
+      requestId,
+      method,
+      url: context.request.url,
+      userAgent: context.request.headers.get("user-agent"),
+      forwardedFor: context.request.headers.get("x-forwarded-for"),
+      clientIp,
+    });
   })
   .onAfterHandle((context) => {
     const endTime = Date.now();
-    const startTime = (context.store as { startTime: number })?.startTime ?? 0;
+    const { startTime } = context.store as { startTime: number };
     const duration = endTime - startTime;
     recordHttpResponseTime(duration);
+
     log("Outgoing response", {
+      requestId: context.set.headers["X-Request-ID"],
       method: context.request.method,
       url: context.request.url,
       status: context.set.status,
