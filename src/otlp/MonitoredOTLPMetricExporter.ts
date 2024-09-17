@@ -54,10 +54,9 @@ export class MonitoredOTLPMetricExporter extends MonitoredOTLPExporter<ResourceM
         error: error instanceof Error ? error : new Error(String(error)),
       });
     }
-
-    this.periodicLogging();
   }
   async shutdown(): Promise<void> {
+    await this.baseShutdown();
     await this.metricExporter.shutdown();
   }
 

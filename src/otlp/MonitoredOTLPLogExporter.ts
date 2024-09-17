@@ -49,15 +49,13 @@ export class MonitoredOTLPLogExporter extends MonitoredOTLPExporter<
         error: error instanceof Error ? error : new Error(String(error)),
       });
     }
-
-    this.periodicLogging();
   }
   async shutdown(): Promise<void> {
+    await this.baseShutdown();
     await this.logExporter.shutdown();
   }
 
   async forceFlush(): Promise<void> {
-    // OTLPLogExporter doesn't have a forceFlush method, so we'll implement a no-op
     console.debug("forceFlush called on MonitoredOTLPLogExporter");
   }
 }

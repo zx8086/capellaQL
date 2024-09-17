@@ -15,6 +15,7 @@ export const config: Config = {
     YOGA_RESPONSE_CACHE_TTL: getEnvNumberOrThrow("YOGA_RESPONSE_CACHE_TTL"),
     PORT: getEnvNumberOrThrow("PORT"),
     ENABLE_FILE_LOGGING: getEnvBooleanOrThrow("ENABLE_FILE_LOGGING"),
+    ALLOWED_ORIGINS: getEnvOrThrow("ALLOWED_ORIGINS").split(","),
   },
   capella: {
     COUCHBASE_URL: getEnvOrThrow("COUCHBASE_URL"),

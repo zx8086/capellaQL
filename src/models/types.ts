@@ -7,6 +7,7 @@ export interface ApplicationConfig {
   YOGA_RESPONSE_CACHE_TTL: number;
   PORT: number;
   ENABLE_FILE_LOGGING: boolean;
+  ALLOWED_ORIGINS: string[];
 }
 
 export interface CapellaConfig {

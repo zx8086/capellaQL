@@ -9,9 +9,9 @@ import type { ExportResult } from "@opentelemetry/core";
 import config from "../config";
 
 export abstract class MonitoredOTLPExporter<T> {
+  private logTimer: any;
   protected totalExports: number = 0;
   protected successfulExports: number = 0;
-  protected lastLogTime: number = Date.now();
   protected readonly logIntervalMs: number;
   public readonly url: string;
   protected abstract readonly exporterType: string;
@@ -31,6 +31,21 @@ export abstract class MonitoredOTLPExporter<T> {
         `${this.constructor.name} log interval: ${this.logIntervalMs}ms`,
       );
     }
+
+    this.logTimer = setInterval(() => {
+      this.logStatistics();
+    }, this.logIntervalMs);
+  }
+
+  private logStatistics(): void {
+    const successRate = (this.successfulExports / this.totalExports) * 100 || 0;
+    console.debug(`
+=== OpenTelemetry ${this.exporterType} Export Statistics ===
+Total Exports: ${this.totalExports}
+Successful Exports: ${this.successfulExports}
+Success Rate: ${successRate.toFixed(2)}%
+===============================================
+    `);
   }
 
   protected async checkNetworkConnectivity(): Promise<void> {
@@ -115,29 +130,12 @@ export abstract class MonitoredOTLPExporter<T> {
     console.error(`Current time: ${new Date().toISOString()}`);
   }
 
-  protected periodicLogging(): void {
-    const currentTime = Date.now();
-    const timeSinceLastLog = currentTime - this.lastLogTime;
-    console.log(
-      `Time since last log: ${timeSinceLastLog}ms, Interval: ${this.logIntervalMs}ms`,
-    );
-
-    if (timeSinceLastLog >= this.logIntervalMs) {
-      const successRate = (this.successfulExports / this.totalExports) * 100;
-      console.debug(`
-  === OpenTelemetry ${this.exporterType} Export Statistics ===
-  Total Exports: ${this.totalExports}
-  Successful Exports: ${this.successfulExports}
-  Success Rate: ${successRate.toFixed(2)}%
-  ========================================
-      `);
-      this.lastLogTime = currentTime;
-    }
+  protected async baseShutdown(): Promise<void> {
+    clearInterval(this.logTimer as NodeJS.Timeout);
   }
 
   abstract shutdown(): Promise<void>;
 
-  // Remove the '?' to make it a required method
   abstract forceFlush(): Promise<void>;
 
   abstract export(

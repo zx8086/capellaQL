@@ -10,7 +10,11 @@ import { useResponseCache } from "@graphql-yoga/plugin-response-cache";
 import { log, err } from "$utils/logger";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { initializeHttpMetrics, recordHttpRequest, recordHttpResponseTime } from "./instrumentation";
+import {
+  initializeHttpMetrics,
+  recordHttpRequest,
+  recordHttpResponseTime,
+} from "./instrumentation";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +43,9 @@ if (typeof globalThis["ENV_TRUE"] === "undefined") {
 
 const SERVER_PORT = config.application["PORT"];
 const YOGA_RESPONSE_CACHE_TTL = config.application["YOGA_RESPONSE_CACHE_TTL"];
+const ALLOWED_ORIGINS = config.application.ALLOWED_ORIGINS;
+const IS_DEVELOPMENT =
+  config.openTelemetry.DEPLOYMENT_ENVIRONMENT === "development";
 
 const createYogaOptions = () => ({
   typeDefs,
@@ -81,10 +88,53 @@ const app = new Elysia()
     log("The server has started!");
     initializeHttpMetrics();
   })
-  .use(cors())
+  .use(
+    cors({
+      origin: ALLOWED_ORIGINS,
+      methods: ["GET", "POST", "OPTIONS"],
+    }),
+  )
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
   .onRequest((context) => {
+    const cspDirectives = [
+      "default-src 'self'",
+      `script-src 'self' ${IS_DEVELOPMENT ? "'unsafe-inline'" : ""}`,
+      `style-src 'self' ${IS_DEVELOPMENT ? "'unsafe-inline'" : ""}`,
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'self'",
+      "connect-src 'self'",
+    ];
+    ALLOWED_ORIGINS.forEach((origin) => {
+      if (!origin.startsWith("http://localhost:")) {
+        cspDirectives.forEach((directive, index) => {
+          if (!directive.includes("'none'")) {
+            cspDirectives[index] += ` ${origin}`;
+          }
+        });
+      }
+    });
+
+    if (IS_DEVELOPMENT) {
+      const localhostOrigins = ALLOWED_ORIGINS.filter((origin) =>
+        origin.startsWith("http://localhost:"),
+      );
+      cspDirectives[cspDirectives.length - 1] +=
+        ` ${localhostOrigins.join(" ")}`;
+    }
+
+    // Set CSP header
+    context.set.headers["Content-Security-Policy"] = cspDirectives.join("; ");
+
+    context.set.headers["X-XSS-Protection"] = "1; mode=block";
+    context.set.headers["X-Frame-Options"] = "SAMEORIGIN";
+    context.set.headers["X-Content-Type-Options"] = "nosniff";
+    context.set.headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+
     const startTime = Date.now();
     context.store = { startTime };
     const method = context.request.method;

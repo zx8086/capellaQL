@@ -62,6 +62,7 @@ jobs:
           METRIC_READER_INTERVAL=${{ vars.METRIC_READER_INTERVAL }}
           CONSOLE_METRIC_READER_INTERVAL=${{ vars.CONSOLE_METRIC_READER_INTERVAL }}
           SUMMARY_LOG_INTERVAL=${{ vars.SUMMARY_LOG_INTERVAL }}
+          ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
           EOF
 
       - name: Run Snyk checks
