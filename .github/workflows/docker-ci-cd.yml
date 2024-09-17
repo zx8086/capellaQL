@@ -109,20 +109,28 @@ jobs:
             "${build_args[@]}" \
             .
 
+      # New step to verify the Docker image
+      - name: Verify Docker image
+        run: docker image ls zx8086/capellaql:latest
+
+      # New step to explicitly pull the Docker image
+      - name: Pull Docker image
+        run: docker pull zx8086/capellaql:latest
+
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          bun install -g snyk
-          snyk container test zx8086/capellaql:latest --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-docker.sarif
+          bun run snyk container test zx8086/capellaql:latest --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-docker.sarif
 
+      # Updated step for Snyk monitor
       - name: Run Snyk monitor for Docker image
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          snyk container monitor zx8086/capellaql:latest --file=Dockerfile || true
+          bun run snyk container monitor zx8086/capellaql:latest --file=Dockerfile || true
 
       - name: Upload Docker Snyk scan results to GitHub Code Scanning
         if: hashFiles('snyk-docker.sarif') != ''
