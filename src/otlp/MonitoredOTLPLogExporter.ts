@@ -6,6 +6,7 @@ import type { ReadableLogRecord } from "@opentelemetry/sdk-logs";
 import { type ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import config from "../config";
+import { debug } from "$utils/logger";
 
 export class MonitoredOTLPLogExporter extends MonitoredOTLPExporter<
   ReadableLogRecord[]
@@ -22,7 +23,7 @@ export class MonitoredOTLPLogExporter extends MonitoredOTLPExporter<
     logs: ReadableLogRecord[],
     resultCallback: (result: ExportResult) => void,
   ): Promise<void> {
-    console.debug("Starting log export");
+    debug("Starting log export");
     this.totalExports++;
     const exportStartTime = Date.now();
 
@@ -56,6 +57,6 @@ export class MonitoredOTLPLogExporter extends MonitoredOTLPExporter<
   }
 
   async forceFlush(): Promise<void> {
-    console.debug("forceFlush called on MonitoredOTLPLogExporter");
+    debug("forceFlush called on MonitoredOTLPLogExporter");
   }
 }

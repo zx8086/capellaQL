@@ -155,14 +155,16 @@ const app = new Elysia()
     }
   })
   .onRequest((context) => {
-    log("All headers:", context.request.headers)
+    log("All headers:", Object.fromEntries(context.request.headers.entries()));
     const requestId = ulid();
     context.set.headers["X-Request-ID"] = requestId;
 
     const clientIp =
       context.request.headers.get("x-forwarded-for") ||
       context.request.headers.get("cf-connecting-ip") ||
-      "unknown";
+      context.request.headers.get("x-real-ip") ||
+      context.request.headers.get("remote-addr") ||
+      context.request.headers.get("x-client-ip") || "unknown";
 
     const cspDirectives = [
       "default-src 'self'",
@@ -210,6 +212,7 @@ const app = new Elysia()
       userAgent: context.request.headers.get("user-agent"),
       forwardedFor: context.request.headers.get("x-forwarded-for"),
       clientIp,
+      remoteAddress: context.request.ip || "unknown",
     });
   })
   .onAfterHandle((context) => {
