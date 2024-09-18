@@ -110,29 +110,29 @@ async function initializeOpenTelemetry() {
         ...commonConfig,
       }) as unknown as SpanExporter;
 
-      console.log("Traces exporter created with config:", {
-        url: config.openTelemetry.TRACES_ENDPOINT,
-        interval: config.openTelemetry.METRIC_READER_INTERVAL,
-        summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
-      });
-
       const otlpMetricExporter = new MonitoredOTLPMetricExporter({
         url: config.openTelemetry.METRICS_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
       }) as unknown as PushMetricExporter;
 
-      console.log("Metrics exporter created with config:", {
-        url: config.openTelemetry.METRICS_ENDPOINT,
-        interval: config.openTelemetry.METRIC_READER_INTERVAL,
-        summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
-      });
-
       const logExporter = new MonitoredOTLPLogExporter({
         url: config.openTelemetry.LOGS_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
       }) as unknown as LogRecordExporter;
+
+      console.log("Traces exporter created with config:", {
+        url: config.openTelemetry.TRACES_ENDPOINT,
+        interval: config.openTelemetry.METRIC_READER_INTERVAL,
+        summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
+      });
+
+      console.log("Metrics exporter created with config:", {
+        url: config.openTelemetry.METRICS_ENDPOINT,
+        interval: config.openTelemetry.METRIC_READER_INTERVAL,
+        summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
+      });
 
       console.log("Logs exporter created with config:", {
         url: config.openTelemetry.LOGS_ENDPOINT,

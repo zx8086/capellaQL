@@ -47,28 +47,39 @@ const ALLOWED_ORIGINS = config.application.ALLOWED_ORIGINS;
 const IS_DEVELOPMENT =
   config.openTelemetry.DEPLOYMENT_ENVIRONMENT === "development";
 
-// Simple in-memory rate limiting
-const RATE_LIMIT = 5; // requests
+// Update rate limiting
+const RATE_LIMIT = 500; // requests per minute per IP per endpoint
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute in milliseconds
 
 const rateLimitStore = new Map<string, { count: number; timestamp: number }>();
 
-function checkRateLimit(clientIp: string): boolean {
+function getRateLimitKey(request: Request): string {
+  const clientIp = request.headers.get("x-forwarded-for") || 
+                   request.headers.get("cf-connecting-ip") || 
+                   "unknown";
+  
+  const url = new URL(request.url);
+  const path = url.pathname;
+  
+  return `${clientIp}:${path}`;
+}
+
+function checkRateLimit(request: Request): boolean {
+  const rateLimitKey = getRateLimitKey(request);
   const now = Date.now();
-  const clientData = rateLimitStore.get(clientIp) || {
+  const clientData = rateLimitStore.get(rateLimitKey) || {
     count: 0,
     timestamp: now,
   };
 
   if (now - clientData.timestamp > RATE_LIMIT_WINDOW) {
-    // Reset if the window has passed
     clientData.count = 1;
     clientData.timestamp = now;
   } else {
     clientData.count++;
   }
 
-  rateLimitStore.set(clientIp, clientData);
+  rateLimitStore.set(rateLimitKey, clientData);
 
   return clientData.count > RATE_LIMIT;
 }
@@ -138,18 +149,13 @@ const app = new Elysia()
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
   .onRequest(({ request, set }) => {
-    const clientIp =
-      request.headers.get("x-forwarded-for") ||
-      request.headers.get("cf-connecting-ip") ||
-      "unknown";
-
-    if (checkRateLimit(clientIp)) {
+    if (checkRateLimit(request)) {
       set.status = 429;
       return "Too Many Requests";
     }
   })
   .onRequest((context) => {
-    console.log("All headers:", context.request.headers);
+    log("All headers:", context.request.headers);
     const requestId = ulid();
     context.set.headers["X-Request-ID"] = requestId;
 
