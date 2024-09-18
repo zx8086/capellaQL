@@ -14,7 +14,7 @@ import { Resource } from "@opentelemetry/resources";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  // SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
+  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
 } from "@opentelemetry/semantic-conventions";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { MonitoredOTLPTraceExporter } from "./otlp/MonitoredOTLPTraceExporter";
@@ -57,8 +57,8 @@ const createResource = async () => {
     new Resource({
       [ATTR_SERVICE_NAME]: config.openTelemetry.SERVICE_NAME,
       [ATTR_SERVICE_VERSION]: config.openTelemetry.SERVICE_VERSION,
-      // [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]:
-      //   config.openTelemetry.DEPLOYMENT_ENVIRONMENT,
+      [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]:
+        config.openTelemetry.DEPLOYMENT_ENVIRONMENT,
     }),
   );
 };

@@ -166,10 +166,10 @@ const app = new Elysia()
 
     const cspDirectives = [
       "default-src 'self'",
-      `script-src 'self' ${IS_DEVELOPMENT ? "'unsafe-inline'" : ""}`,
-      `style-src 'self' ${IS_DEVELOPMENT ? "'unsafe-inline'" : ""}`,
-      "img-src 'self' data:",
-      "font-src 'self'",
+      `script-src 'self' 'unsafe-inline' ${IS_DEVELOPMENT ? "'unsafe-eval'" : ""} https://unpkg.com`,
+      `style-src 'self' 'unsafe-inline' https://unpkg.com`,
+      "img-src 'self' data: https://raw.githubusercontent.com",
+      "font-src 'self' https://unpkg.com",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -177,21 +177,15 @@ const app = new Elysia()
       "connect-src 'self'",
     ];
     ALLOWED_ORIGINS.forEach((origin) => {
-      if (!origin.startsWith("http://localhost:")) {
-        cspDirectives.forEach((directive, index) => {
-          if (!directive.includes("'none'")) {
-            cspDirectives[index] += ` ${origin}`;
-          }
-        });
-      }
+      cspDirectives.forEach((directive, index) => {
+        if (!directive.includes("'none'")) {
+          cspDirectives[index] += ` ${origin.trim()}`;
+        }
+      });
     });
 
     if (IS_DEVELOPMENT) {
-      const localhostOrigins = ALLOWED_ORIGINS.filter((origin) =>
-        origin.startsWith("http://localhost:"),
-      );
-      cspDirectives[cspDirectives.length - 1] +=
-        ` ${localhostOrigins.join(" ")}`;
+      cspDirectives[1] += " 'unsafe-eval'";
     }
 
     // Set CSP header
