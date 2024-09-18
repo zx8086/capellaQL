@@ -155,7 +155,7 @@ const app = new Elysia()
     }
   })
   .onRequest((context) => {
-    log("All headers:", context.request.headers);
+    log("All headers:", context.request.headers)
     const requestId = ulid();
     context.set.headers["X-Request-ID"] = requestId;
 

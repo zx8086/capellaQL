@@ -60,6 +60,15 @@ ENV CN_ROOT=/usr/src/app
 RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache && \
     chown -R bun:bun /usr/src/app
 
+# Development stage
+FROM base AS development
+ENV NODE_ENV=development
+COPY package.json bun.lockb ./
+RUN bun install
+COPY . .
+COPY .env .env
+CMD ["bun", "run", "dev"]
+
 # install dependencies into temp directory
 FROM base AS install
 RUN mkdir -p /temp/dev
@@ -80,20 +89,20 @@ COPY . .
 # [optional] tests & build
 ENV NODE_ENV=production
 RUN bun test
-RUN bun build ./src/index.ts --target=node --outdir ./dist
+RUN bun build ./src/index.ts --target=node --outdir ./dist --no-minify
+RUN ls -R ./dist
+RUN cat ./dist/index.js
 
 # copy production dependencies and source code into final image
 FROM base AS release
 ENV NODE_ENV=production
 ENV CN_ROOT=/usr/src/app
 ENV CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
-RUN echo "globalThis.CN_ROOT = '/usr/src/app';" > /usr/src/app/set-global.js
-RUN echo "globalThis.CXXCBC_CACHE_DIR = '/usr/src/app/deps/couchbase-cxx-cache';" >> /usr/src/app/set-global.js
-RUN echo "globalThis.ENV_TRUE = ['true', '1', 'y', 'yes', 'on'];" >> /usr/src/app/set-global.js
-COPY --from=install /temp/prod/node_modules node_modules
-COPY --from=prerelease /usr/src/app/dist/ ./dist/
-COPY --from=prerelease /usr/src/app/package.json .
-COPY --from=prerelease /usr/src/app/deps ./deps
+ENV ENABLE_OPENTELEMETRY=true
+
+COPY package.json bun.lockb ./
+RUN bun install
+COPY . .
 
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app
@@ -101,5 +110,4 @@ RUN chown -R bun:bun /usr/src/app
 # run the application
 USER bun
 EXPOSE 4000/tcp
-ENV CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
-ENTRYPOINT ["bun", "run", "--preload", "/usr/src/app/set-global.js", "dist/index.js"]
+CMD ["bun", "run", "src/index.ts"]
