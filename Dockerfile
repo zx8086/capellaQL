@@ -102,4 +102,4 @@ RUN chown -R bun:bun /usr/src/app
 USER bun
 EXPOSE 4000/tcp
 ENV CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
-ENTRYPOINT ["/bin/sh", "-c", "echo dummy > /etc/machine-id && bun run --preload /usr/src/app/set-global.js dist/index.js"]
+ENTRYPOINT ["bun", "run", "--preload", "/usr/src/app/set-global.js", "dist/index.js"]
