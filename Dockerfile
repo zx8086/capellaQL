@@ -1,7 +1,7 @@
 # Dockerfile
 
-# Use Bun Canary Distroless as the base image
-FROM oven/bun:latest AS base
+# Use a more lightweight base image
+FROM oven/bun:slim AS base
 
 # Set environment variables
 ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \

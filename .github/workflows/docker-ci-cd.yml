@@ -91,10 +91,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
+        env:
+          DOCKER_BUILDKIT: 1
         run: |
           docker buildx build \
             --push \
             --target release \
+            --parallel \
             -t zx8086/capellaql:latest \
             --build-arg BASE_URL=${{ vars.BASE_URL }} \
             --build-arg PORT=${{ vars.PORT }} \
@@ -135,7 +138,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          bun run snyk container test zx8086/capellaql:latest --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-docker.sarif
+          bun run snyk container test zx8086/capellaql:latest --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-docker.sarif --production
 
       # Updated step for Snyk monitor
       - name: Run Snyk monitor for Docker image
