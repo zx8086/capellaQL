@@ -14,9 +14,12 @@ export class MonitoredOTLPLogExporter extends MonitoredOTLPExporter<
   protected readonly exporterType: string = "Logs";
   private readonly logExporter: OTLPLogExporter;
 
-  constructor(exporterConfig: OTLPExporterNodeConfigBase) {
-    super(exporterConfig, config.openTelemetry.LOGS_ENDPOINT);
-    this.logExporter = new OTLPLogExporter(exporterConfig);
+  constructor(exporterConfig: OTLPExporterNodeConfigBase, timeoutMillis: number = 60000) {
+    super(exporterConfig, config.openTelemetry.LOGS_ENDPOINT, timeoutMillis);
+    this.logExporter = new OTLPLogExporter({
+      ...exporterConfig,
+      timeoutMillis: this.timeoutMillis
+    });
   }
 
   async export(

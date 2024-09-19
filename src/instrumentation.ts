@@ -75,6 +75,8 @@ const commonConfig = {
   concurrencyLimit: 100,
 };
 
+const exporterTimeout = 120000; // 2 minutes
+
 export function initializeHttpMetrics() {
   if (INSTRUMENTATION_ENABLED && meter) {
     log("Initializing HTTP metrics");
@@ -115,19 +117,19 @@ async function initializeOpenTelemetry() {
         url: config.openTelemetry.TRACES_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
-      }) as unknown as SpanExporter;
+      }, exporterTimeout) as unknown as SpanExporter;
 
       const otlpMetricExporter = new MonitoredOTLPMetricExporter({
         url: config.openTelemetry.METRICS_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
-      }) as unknown as PushMetricExporter;
+      }, exporterTimeout) as unknown as PushMetricExporter;
 
       const logExporter = new MonitoredOTLPLogExporter({
         url: config.openTelemetry.LOGS_ENDPOINT,
         headers: { "Content-Type": "application/json" },
         ...commonConfig,
-      }) as unknown as LogRecordExporter;
+      }, exporterTimeout) as unknown as LogRecordExporter;
 
       log("Traces exporter created with config:", {
         url: config.openTelemetry.TRACES_ENDPOINT,

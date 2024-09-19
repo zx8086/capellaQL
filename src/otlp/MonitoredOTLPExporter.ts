@@ -16,10 +16,12 @@ export abstract class MonitoredOTLPExporter<T> {
   protected readonly logIntervalMs: number;
   public readonly url: string;
   protected abstract readonly exporterType: string;
+  protected readonly timeoutMillis: number;
 
-  constructor(exporterConfig: OTLPExporterNodeConfigBase, endpoint: string) {
+  constructor(exporterConfig: OTLPExporterNodeConfigBase, endpoint: string, timeoutMillis: number = 60000) {
     this.url = exporterConfig.url || endpoint;
-    log(`${this.constructor.name} initialized with URL: ${this.url}`);
+    this.timeoutMillis = timeoutMillis;
+    log(`${this.constructor.name} initialized with URL: ${this.url} and timeout: ${this.timeoutMillis}ms`);
 
     this.logIntervalMs = otlpConfig.logIntervalMs;
     if (typeof this.logIntervalMs !== "number" || isNaN(this.logIntervalMs)) {

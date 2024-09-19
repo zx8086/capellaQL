@@ -12,9 +12,12 @@ export class MonitoredOTLPMetricExporter extends MonitoredOTLPExporter<ResourceM
   protected readonly exporterType: string = "Metrics";
   private readonly metricExporter: OTLPMetricExporter;
 
-  constructor(exporterConfig: OTLPExporterNodeConfigBase) {
-    super(exporterConfig, config.openTelemetry.METRICS_ENDPOINT);
-    this.metricExporter = new OTLPMetricExporter(exporterConfig);
+  constructor(exporterConfig: OTLPExporterNodeConfigBase, timeoutMillis: number = 60000) {
+    super(exporterConfig, config.openTelemetry.METRICS_ENDPOINT, timeoutMillis);
+    this.metricExporter = new OTLPMetricExporter({
+      ...exporterConfig,
+      timeoutMillis: this.timeoutMillis
+    });
   }
 
   async export(

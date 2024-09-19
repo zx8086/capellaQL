@@ -7,88 +7,68 @@ FROM debian:stable-slim AS base
 RUN apt-get update && apt-get install -y \
     curl \
     unzip \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Bun
-RUN curl -fsSL https://bun.sh/install | bash
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://bun.sh/install | bash
 
 # Add Bun to PATH
 ENV PATH="/root/.bun/bin:${PATH}"
 
-ENV BASE_URL=""
-ENV PORT=""
-ENV LOG_LEVEL=""
-ENV LOG_MAX_SIZE=""
-ENV LOG_MAX_FILES=""
-ENV YOGA_RESPONSE_CACHE_TTL=""
-ENV COUCHBASE_URL=""
-ENV COUCHBASE_USERNAME=""
-ENV COUCHBASE_BUCKET=""
-ENV COUCHBASE_SCOPE=""
-ENV COUCHBASE_COLLECTION=""
-ENV SERVICE_NAME=""
-ENV SERVICE_VERSION=""
-ENV DEPLOYMENT_ENVIRONMENT=""
-ENV TRACES_ENDPOINT=""
-ENV METRICS_ENDPOINT=""
-ENV LOGS_ENDPOINT=""
-ENV METRIC_READER_INTERVAL=""
-ENV CONSOLE_METRIC_READER_INTERVAL=""
-ENV ENABLE_FILE_LOGGING=""
-ENV ENABLE_OPENTELEMETRY=""
-ENV SUMMARY_LOG_INTERVAL=""
-ENV ALLOWED_ORIGINS=""
+# Set environment variables
+ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
+    YOGA_RESPONSE_CACHE_TTL="" COUCHBASE_URL="" COUCHBASE_USERNAME="" \
+    COUCHBASE_BUCKET="" COUCHBASE_SCOPE="" COUCHBASE_COLLECTION="" \
+    SERVICE_NAME="" SERVICE_VERSION="" DEPLOYMENT_ENVIRONMENT="" \
+    TRACES_ENDPOINT="" METRICS_ENDPOINT="" LOGS_ENDPOINT="" \
+    METRIC_READER_INTERVAL="" CONSOLE_METRIC_READER_INTERVAL="" \
+    ENABLE_FILE_LOGGING="" ENABLE_OPENTELEMETRY="" SUMMARY_LOG_INTERVAL="" \
+    ALLOWED_ORIGINS=""
 
 WORKDIR /usr/src/app
 ENV CN_ROOT=/usr/src/app
 
-# Create necessary directories with the correct permissions
+# Create necessary directories
 RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache && \
     chown -R root:root /usr/src/app
 
 # Development stage
 FROM base AS development
 ENV NODE_ENV=development
-COPY package.json bun.lockb ./
+COPY package.json ./
 RUN bun install
 COPY . .
 COPY .env .env
 CMD ["bun", "run", "dev"]
 
-# install dependencies into temp directory
+# Install dependencies into temp directory
 FROM base AS install
-RUN mkdir -p /temp/dev
-COPY package.json bun.lockb /temp/dev/
+RUN mkdir -p /temp/dev /temp/prod
+COPY package.json /temp/dev/
 RUN cd /temp/dev && bun install --frozen-lockfile
-
-# install with --production (exclude devDependencies)
-RUN mkdir -p /temp/prod
-COPY package.json bun.lockb /temp/prod/
+COPY package.json /temp/prod/
 RUN cd /temp/prod && bun install --frozen-lockfile --production
 
-# copy node_modules from temp directory
-# then copy all (non-ignored) project files into the image
+# Prerelease stage
 FROM base AS prerelease
 COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
 
-# [optional] tests & build
+# Build and test
 ENV NODE_ENV=production
-RUN bun test
-RUN bun build ./src/index.ts --target=node --outdir ./dist --no-minify
-RUN ls -R ./dist
-RUN cat ./dist/index.js
+RUN bun test && \
+    bun build ./src/index.ts --target=bun --outdir ./dist && \
+    ls -R ./dist
 
-# copy production dependencies and source code into final image
+# Final release stage
 FROM base AS release
 ENV NODE_ENV=production
 ENV CN_ROOT=/usr/src/app
 ENV CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
 ENV ENABLE_OPENTELEMETRY=true
 
-COPY package.json bun.lockb ./
-RUN bun install
-COPY . .
+COPY package.json ./
+RUN bun install --production
+COPY src ./src
+COPY dist ./dist
 
 # Create bun user and group
 RUN groupadd -r bun && useradd -r -g bun bun
@@ -96,7 +76,7 @@ RUN groupadd -r bun && useradd -r -g bun bun
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app
 
-# run the application
+# Run the application
 USER bun
 EXPOSE 4000/tcp
 CMD ["bun", "run", "src/index.ts"]
