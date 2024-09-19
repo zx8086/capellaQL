@@ -67,8 +67,8 @@ ENV ENABLE_OPENTELEMETRY=true
 
 COPY package.json ./
 RUN bun install --production
+COPY --from=prerelease /usr/src/app/dist ./dist
 COPY src ./src
-COPY dist ./dist
 
 # Create bun user and group
 RUN groupadd -r bun && useradd -r -g bun bun
