@@ -3,60 +3,47 @@
 # Use a more lightweight base image
 FROM oven/bun:slim AS base
 
-# Set environment variables
+# Set common environment variables
+ENV CN_ROOT=/usr/src/app \
+    CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
+
+WORKDIR /usr/src/app
+
+# Create necessary directories
+RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache
+
+# Install dependencies stage
+FROM base AS deps
+
+# Copy only package.json and lockfile
+COPY package.json bun.lockb ./
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.bun \
+    bun install --frozen-lockfile
+
+# Development stage
+FROM deps AS development
+ENV NODE_ENV=development
+COPY . .
+CMD ["bun", "run", "dev"]
+
+# Final release stage
+FROM deps AS release
+ENV NODE_ENV=production \
+    ENABLE_OPENTELEMETRY=true
+
+# Copy all source files
+COPY . .
+
+# Set runtime environment variables
 ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
     YOGA_RESPONSE_CACHE_TTL="" COUCHBASE_URL="" COUCHBASE_USERNAME="" \
     COUCHBASE_BUCKET="" COUCHBASE_SCOPE="" COUCHBASE_COLLECTION="" \
     SERVICE_NAME="" SERVICE_VERSION="" DEPLOYMENT_ENVIRONMENT="" \
     TRACES_ENDPOINT="" METRICS_ENDPOINT="" LOGS_ENDPOINT="" \
     METRIC_READER_INTERVAL="" CONSOLE_METRIC_READER_INTERVAL="" \
-    ENABLE_FILE_LOGGING="" ENABLE_OPENTELEMETRY="" SUMMARY_LOG_INTERVAL="" \
-    ALLOWED_ORIGINS=""
-
-WORKDIR /usr/src/app
-ENV CN_ROOT=/usr/src/app
-
-# Create necessary directories
-RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache && \
-    chown -R root:root /usr/src/app
-
-# Development stage
-FROM base AS development
-ENV NODE_ENV=development
-COPY package.json ./
-RUN bun install
-COPY . .
-CMD ["bun", "run", "dev"]
-
-# Install dependencies into temp directory
-FROM base AS install
-RUN mkdir -p /temp/dev /temp/prod
-COPY package.json /temp/dev/
-RUN cd /temp/dev && bun install --frozen-lockfile
-COPY package.json /temp/prod/
-RUN cd /temp/prod && bun install --frozen-lockfile --production
-
-# Prerelease stage
-FROM base AS prerelease
-COPY --from=install /temp/dev/node_modules node_modules
-COPY . .
-
-# Build and test
-ENV NODE_ENV=production
-RUN bun test && \
-    bun build ./src/index.ts --target=bun --outdir ./dist && \
-    ls -R ./dist
-
-# Final release stage
-FROM base AS release
-ENV NODE_ENV=production
-ENV CN_ROOT=/usr/src/app
-ENV CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
-ENV ENABLE_OPENTELEMETRY=true
-
-COPY package.json ./
-RUN bun install --production
-COPY . .
+    ENABLE_FILE_LOGGING="" SUMMARY_LOG_INTERVAL="" ALLOWED_ORIGINS=""
 
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app

@@ -25,9 +25,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ github.repository }}-${{ hashFiles('**/bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
           restore-keys: |
-            ${{ runner.os }}-bun-${{ github.repository }}-
             ${{ runner.os }}-bun-
 
       - name: Install dependencies and run post-install scripts
@@ -88,7 +87,7 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v2
 
       - name: Cache Docker layers
         uses: actions/cache@v3
@@ -99,40 +98,18 @@ jobs:
             ${{ runner.os }}-buildx-
 
       - name: Build and push Docker image
-        env:
-          DOCKER_BUILDKIT: 1
-        run: |
-          docker buildx build \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-            --push \
-            --target release \
-            -t zx8086/capellaql:latest \
-            --build-arg BASE_URL=${{ vars.BASE_URL }} \
-            --build-arg PORT=${{ vars.PORT }} \
-            --build-arg LOG_LEVEL=${{ vars.LOG_LEVEL }} \
-            --build-arg LOG_MAX_SIZE=${{ vars.LOG_MAX_SIZE }} \
-            --build-arg LOG_MAX_FILES=${{ vars.LOG_MAX_FILES }} \
-            --build-arg YOGA_RESPONSE_CACHE_TTL=${{ vars.YOGA_RESPONSE_CACHE_TTL }} \
-            --build-arg COUCHBASE_URL=${{ secrets.COUCHBASE_URL }} \
-            --build-arg COUCHBASE_USERNAME=${{ secrets.COUCHBASE_USERNAME }} \
-            --build-arg COUCHBASE_PASSWORD=${{ secrets.COUCHBASE_PASSWORD }} \
-            --build-arg COUCHBASE_BUCKET=${{ vars.COUCHBASE_BUCKET }} \
-            --build-arg COUCHBASE_SCOPE=${{ vars.COUCHBASE_SCOPE }} \
-            --build-arg COUCHBASE_COLLECTION=${{ vars.COUCHBASE_COLLECTION }} \
-            --build-arg SERVICE_NAME=${{ vars.SERVICE_NAME }} \
-            --build-arg SERVICE_VERSION=${{ vars.SERVICE_VERSION }} \
-            --build-arg DEPLOYMENT_ENVIRONMENT=${{ vars.DEPLOYMENT_ENVIRONMENT }} \
-            --build-arg TRACES_ENDPOINT=${{ vars.TRACES_ENDPOINT }} \
-            --build-arg METRICS_ENDPOINT=${{ vars.METRICS_ENDPOINT }} \
-            --build-arg LOGS_ENDPOINT=${{ vars.LOGS_ENDPOINT }} \
-            --build-arg METRIC_READER_INTERVAL=${{ vars.METRIC_READER_INTERVAL }} \
-            --build-arg CONSOLE_METRIC_READER_INTERVAL=${{ vars.CONSOLE_METRIC_READER_INTERVAL }} \
-            --build-arg ENABLE_FILE_LOGGING=${{ vars.ENABLE_FILE_LOGGING }} \
-            --build-arg ENABLE_OPENTELEMETRY=${{ vars.ENABLE_OPENTELEMETRY }} \
-            --build-arg SUMMARY_LOG_INTERVAL=${{ vars.SUMMARY_LOG_INTERVAL }} \
-            --build-arg ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }} \
-            .
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: zx8086/capellaql:latest
+          target: release
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          build-args: |
+            BASE_URL=${{ vars.BASE_URL }}
+            PORT=${{ vars.PORT }}
+            # ... other build args ...
 
       - name: Move cache
         run: |
