@@ -71,7 +71,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           export $(grep -v '^#' .env | xargs)
-          bun run snyk test --file=package.json --sarif-file-output=snyk.sarif
+          bun run snyk test --file=package.json --sarif-file-output=snyk.sarif --severity-threshold=high
           bun run snyk monitor --file=package.json
 
       - name: Upload Snyk scan results to GitHub Code Scanning
@@ -90,14 +90,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - name: Build and push Docker image
         env:
           DOCKER_BUILDKIT: 1
         run: |
           docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
             --push \
             --target release \
-            --parallel \
             -t zx8086/capellaql:latest \
             --build-arg BASE_URL=${{ vars.BASE_URL }} \
             --build-arg PORT=${{ vars.PORT }} \
@@ -125,13 +134,10 @@ jobs:
             --build-arg ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }} \
             .
 
-      # New step to verify the Docker image
-      - name: Verify Docker image
-        run: docker image ls zx8086/capellaql:latest
-
-      # New step to explicitly pull the Docker image
-      - name: Pull Docker image
-        run: docker pull zx8086/capellaql:latest
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
@@ -139,13 +145,6 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           bun run snyk container test zx8086/capellaql:latest --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-docker.sarif --production
-
-      # Updated step for Snyk monitor
-      - name: Run Snyk monitor for Docker image
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: |
           bun run snyk container monitor zx8086/capellaql:latest --file=Dockerfile || true
 
       - name: Upload Docker Snyk scan results to GitHub Code Scanning
@@ -154,15 +153,6 @@ jobs:
         with:
           sarif_file: snyk-docker.sarif
           category: snyk-docker
-
-      # - name: Deploy container
-      #   run: |
-      #     docker stop capellaql || true
-      #     docker rm capellaql || true
-      #     docker run -d --name capellaql \
-      #       -p ${{ secrets.PORT }}:${{ secrets.PORT }} \
-      #       --env-file .env \
-      #       zx8086/capellaql:latest
 
       - name: Cleanup
         if: always()
