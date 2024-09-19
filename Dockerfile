@@ -90,10 +90,13 @@ COPY package.json bun.lockb ./
 RUN bun install
 COPY . .
 
+# Create bun user and group
+RUN groupadd -r bun && useradd -r -g bun bun
+
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app
 
 # run the application
-USER root
+USER bun
 EXPOSE 4000/tcp
 CMD ["bun", "run", "src/index.ts"]
