@@ -6,7 +6,7 @@ import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import { type ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import config from "../config";
-import { debug } from "$utils/logger";
+// import { debug } from "$utils/logger";
 
 export class MonitoredOTLPTraceExporter extends MonitoredOTLPExporter<
   ReadableSpan[]
@@ -23,7 +23,7 @@ export class MonitoredOTLPTraceExporter extends MonitoredOTLPExporter<
     spans: ReadableSpan[],
     resultCallback: (result: ExportResult) => void,
   ): Promise<void> {
-    debug("Starting trace export");
+    console.debug("Starting trace export");
     this.totalExports++;
     const exportStartTime = Date.now();
 

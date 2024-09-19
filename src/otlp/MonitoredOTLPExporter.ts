@@ -7,8 +7,7 @@ import { otlpConfig } from "./otlpConfig";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import type { ExportResult } from "@opentelemetry/core";
 import config from "../config";
-import { log, err, debug , warn} from "$utils/logger";
-
+import { log, warn, err, debug } from "$utils/simpleLogger";
 
 export abstract class MonitoredOTLPExporter<T> {
   private logTimer: any;

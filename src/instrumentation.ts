@@ -1,6 +1,6 @@
 /* src/instrumentation.ts */
 
-import { debug, log, warn, err } from "$utils/logger";
+import { debug, log, warn, err } from "$utils/simpleLogger";
 
 log("Starting Application - Couchbase Capella GraphQL API Service");
 
@@ -274,11 +274,11 @@ export function recordHttpRequest(method: string, route: string) {
     }
   } else {
     warn(`Skipped recording HTTP request: instrumentation disabled`);
-    log(
+    warn(
       "ENABLE_OPENTELEMETRY env var:",
       Bun.env["ENABLE_OPENTELEMETRY"],
     );
-    log("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
+    warn("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
   }
 }
 
@@ -288,7 +288,7 @@ export function recordHttpResponseTime(duration: number) {
       httpResponseTimeHistogram.record(duration / 1000);
       debug(`Recorded HTTP response time: ${duration}ms`);
     } else {
-      warn("HTTP response time histogram not initialized");
+      err("HTTP response time histogram not initialized");
     }
   } else {
     warn(

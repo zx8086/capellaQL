@@ -6,7 +6,7 @@ import type { ResourceMetrics } from "@opentelemetry/sdk-metrics";
 import { type ExportResult, ExportResultCode } from "@opentelemetry/core";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import config from "../config";
-import { debug } from "$utils/logger";
+// import { debug } from "$utils/logger";
 
 export class MonitoredOTLPMetricExporter extends MonitoredOTLPExporter<ResourceMetrics> {
   protected readonly exporterType: string = "Metrics";
@@ -21,7 +21,7 @@ export class MonitoredOTLPMetricExporter extends MonitoredOTLPExporter<ResourceM
     metrics: ResourceMetrics,
     resultCallback: (result: ExportResult) => void,
   ): Promise<void> {
-    debug("Starting metric export");
+    console.debug("Starting metric export");
     this.totalExports++;
     const exportStartTime = Date.now();
 

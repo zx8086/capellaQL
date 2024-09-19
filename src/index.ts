@@ -217,13 +217,11 @@ const app = new Elysia()
     log("Incoming request", {
       requestId,
       method,
-      url: url.toString(),
-      path: url.pathname,
-      query: Object.fromEntries(url.searchParams),
-      userAgent: context.request.headers.get("user-agent") || "unknown",
-      forwardedFor: context.request.headers.get("x-forwarded-for") || "none",
+      url: context.request.url,
+      userAgent: context.request.headers.get("user-agent"),
+      forwardedFor: context.request.headers.get("x-forwarded-for"),
       clientIp,
-      remoteAddress: context.request.socket?.remoteAddress || "unknown",
+      remoteAddress: context.request.ip || "unknown",
     });
   })
   .onAfterHandle((context) => {
@@ -236,13 +234,12 @@ const app = new Elysia()
       requestId: context.set.headers["X-Request-ID"],
       method: context.request.method,
       url: context.request.url,
-      path: new URL(context.request.url).pathname,
       status: context.set.status,
       duration: `${duration}ms`,
     });
   });
 
-
+  
 const server = app.listen(SERVER_PORT);
 log(`GraphQL server running on port:${SERVER_PORT}`);
 
