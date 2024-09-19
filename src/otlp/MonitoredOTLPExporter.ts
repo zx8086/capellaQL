@@ -41,13 +41,7 @@ export abstract class MonitoredOTLPExporter<T> {
 
   private logStatistics(): void {
     const successRate = (this.successfulExports / this.totalExports) * 100 || 0;
-    debug(`
-=== OpenTelemetry ${this.exporterType} Export Statistics ===
-Total Exports: ${this.totalExports}
-Successful Exports: ${this.successfulExports}
-Success Rate: ${successRate.toFixed(2)}%
-===============================================
-    `);
+    debug(`OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`);
   }
 
   protected async checkNetworkConnectivity(): Promise<void> {

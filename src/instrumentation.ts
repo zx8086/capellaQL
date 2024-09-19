@@ -1,5 +1,9 @@
 /* src/instrumentation.ts */
 
+import { debug, log, warn, err } from "$utils/logger";
+
+log("Starting Application - Couchbase Capella GraphQL API Service");
+
 import {
   diag,
   DiagConsoleLogger,
@@ -37,14 +41,17 @@ import { GraphQLInstrumentation } from "@opentelemetry/instrumentation-graphql";
 import * as api from "@opentelemetry/api-logs";
 import config from "./config";
 
-console.log("Staring Instrumentation............");
+log("Staring Instrumentation............");
 
-const INSTRUMENTATION_ENABLED =
-  (process.env["ENABLE_OPENTELEMETRY"] as string) === "true";
-console.log("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
+const INSTRUMENTATION_ENABLED = (Bun.env["ENABLE_OPENTELEMETRY"] as string) === "true";
+log("OpenTelemetry Instrumentation Status", { INSTRUMENTATION_ENABLED });
 
-console.log("ENABLE_OPENTELEMETRY value:", process.env["ENABLE_OPENTELEMETRY"]);
-console.log("Parsed INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
+log("OpenTelemetry Environment Variables", {
+  ENABLE_OPENTELEMETRY: Bun.env["ENABLE_OPENTELEMETRY"],
+  PARSED_INSTRUMENTATION_ENABLED: INSTRUMENTATION_ENABLED
+});
+
+log("Parsed INSTRUMENTATION_ENABLED:", {INSTRUMENTATION_ENABLED});
 
 let sdk: NodeSDK | undefined;
 let meter: Meter | undefined;
@@ -70,12 +77,12 @@ const commonConfig = {
 
 export function initializeHttpMetrics() {
   if (INSTRUMENTATION_ENABLED && meter) {
-    console.log("Initializing HTTP metrics");
+    log("Initializing HTTP metrics");
     try {
       httpRequestCounter = meter.createCounter("http_requests_total", {
         description: "Count of HTTP requests",
       });
-      console.debug("HTTP request counter created");
+      log("HTTP request counter created");
 
       httpResponseTimeHistogram = meter.createHistogram(
         "http_response_time_seconds",
@@ -83,14 +90,14 @@ export function initializeHttpMetrics() {
           description: "HTTP response time in seconds",
         },
       );
-      console.log("HTTP response time histogram created");
+      log("HTTP response time histogram created");
 
-      console.log("HTTP metrics initialized successfully");
+      log("HTTP metrics initialized successfully");
     } catch (error) {
-      console.error("Error initializing HTTP metrics:", error);
+      err("Error initializing HTTP metrics:", error);
     }
   } else {
-    console.log(
+    log(
       "HTTP metrics initialization skipped (instrumentation disabled or meter not available)",
     );
   }
@@ -99,7 +106,7 @@ export function initializeHttpMetrics() {
 async function initializeOpenTelemetry() {
   if (INSTRUMENTATION_ENABLED) {
     try {
-      console.log("Initializing OpenTelemetry SDK...");
+      log("Initializing OpenTelemetry SDK...");
       diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
       const resource = await createResource();
@@ -122,19 +129,19 @@ async function initializeOpenTelemetry() {
         ...commonConfig,
       }) as unknown as LogRecordExporter;
 
-      console.log("Traces exporter created with config:", {
+      log("Traces exporter created with config:", {
         url: config.openTelemetry.TRACES_ENDPOINT,
         interval: config.openTelemetry.METRIC_READER_INTERVAL,
         summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
       });
 
-      console.log("Metrics exporter created with config:", {
+      log("Metrics exporter created with config:", {
         url: config.openTelemetry.METRICS_ENDPOINT,
         interval: config.openTelemetry.METRIC_READER_INTERVAL,
         summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
       });
 
-      console.log("Logs exporter created with config:", {
+      log("Logs exporter created with config:", {
         url: config.openTelemetry.LOGS_ENDPOINT,
         interval: config.openTelemetry.METRIC_READER_INTERVAL,
         summaryInterval: config.openTelemetry.SUMMARY_LOG_INTERVAL,
@@ -148,6 +155,7 @@ async function initializeOpenTelemetry() {
           exportTimeoutMillis: 60000,
         }),
       );
+
       api.logs.setGlobalLoggerProvider(loggerProvider);
 
       const otlpMetricReader = new PeriodicExportingMetricReader({
@@ -170,12 +178,12 @@ async function initializeOpenTelemetry() {
           config.openTelemetry.SERVICE_VERSION,
         );
         if (!meter) {
-          console.warn("Failed to get meter from global MeterProvider");
+          warn("Failed to get meter from global MeterProvider");
         } else {
-          console.log("Metrics Meter created successfully");
+          log("Metrics Meter created successfully");
         }
       } catch (error) {
-        console.error("Error getting meter:", error);
+        err("Error getting meter:", error);
       }
 
       const batchSpanProcessor = new BatchSpanProcessor(traceExporter, {
@@ -207,13 +215,13 @@ async function initializeOpenTelemetry() {
       });
 
       sdk.start();
-      console.log("OpenTelemetry SDK started with auto-instrumentation");
+      log("OpenTelemetry SDK started with auto-instrumentation");
 
       initializeHttpMetrics();
 
       process.on("SIGTERM", () => {
         const shutdownTimeout = setTimeout(() => {
-          console.error("SDK shutdown timed out, forcing exit");
+          err("SDK shutdown timed out, forcing exit");
           process.exit(1);
         }, 5000);
 
@@ -221,27 +229,27 @@ async function initializeOpenTelemetry() {
           ?.shutdown()
           .then(() => {
             clearTimeout(shutdownTimeout);
-            console.log("SDK shut down successfully");
+            log("SDK shut down successfully");
             setTimeout(() => process.exit(0), 1000);
           })
           .catch((error) => {
             clearTimeout(shutdownTimeout);
-            console.error("Error shutting down SDK", error);
+            err("Error shutting down SDK", error);
             process.exit(1);
           });
       });
     } catch (error) {
-      console.error("Error initializing OpenTelemetry SDK:", error);
+      err("Error initializing OpenTelemetry SDK:", error);
     }
   } else {
-    console.log("OpenTelemetry instrumentation is disabled");
+    log("OpenTelemetry instrumentation is disabled");
   }
 
   if (INSTRUMENTATION_ENABLED) {
     if (!httpRequestCounter || !httpResponseTimeHistogram) {
-      console.error("HTTP metrics not properly initialized");
+      err("HTTP metrics not properly initialized");
     } else {
-      console.log("HTTP metrics initialized successfully");
+      log("HTTP metrics initialized successfully");
     }
   }
 
@@ -260,17 +268,17 @@ export function recordHttpRequest(method: string, route: string) {
   if (INSTRUMENTATION_ENABLED) {
     if (httpRequestCounter) {
       httpRequestCounter.add(1, { method, route });
-      console.debug(`Recorded HTTP request: method=${method}, route=${route}`);
+      debug(`Recorded HTTP request: method=${method}, route=${route}`);
     } else {
-      console.error("HTTP request counter not initialized");
+      err("HTTP request counter not initialized");
     }
   } else {
-    console.log(`Skipped recording HTTP request: instrumentation disabled`);
-    console.log(
+    warn(`Skipped recording HTTP request: instrumentation disabled`);
+    log(
       "ENABLE_OPENTELEMETRY env var:",
-      process.env["ENABLE_OPENTELEMETRY"],
+      Bun.env["ENABLE_OPENTELEMETRY"],
     );
-    console.log("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
+    log("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
   }
 }
 
@@ -278,12 +286,12 @@ export function recordHttpResponseTime(duration: number) {
   if (INSTRUMENTATION_ENABLED && isInitialized) {
     if (httpResponseTimeHistogram) {
       httpResponseTimeHistogram.record(duration / 1000);
-      console.debug(`Recorded HTTP response time: ${duration}ms`);
+      debug(`Recorded HTTP response time: ${duration}ms`);
     } else {
-      console.error("HTTP response time histogram not initialized");
+      warn("HTTP response time histogram not initialized");
     }
   } else {
-    console.debug(
+    warn(
       `Skipped recording HTTP response time: instrumentation disabled`,
     );
   }

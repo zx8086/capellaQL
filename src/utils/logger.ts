@@ -10,12 +10,17 @@ import { config } from "$config";
 const rootDir = path.join(__dirname, "..", "..");
 const logsDir = path.join(rootDir, "logs");
 
+const customFormat = winston.format.combine(
+  ecsFormat({ convertReqRes: true, apmIntegration: true }),
+  winston.format((info) => {
+    const { '@timestamp': timestamp, 'ecs.version': ecsVersion, level, message, ...rest } = info;
+    return { '@timestamp': timestamp, 'ecs.version': ecsVersion, level, log: { level }, message, ...rest };
+  })()
+);
+
 export const logger = winston.createLogger({
   level: config.application.LOG_LEVEL,
-  format: ecsFormat({
-    convertReqRes: true,
-    apmIntegration: true,
-  }),
+  format: customFormat,
   transports: [
     new winston.transports.Console(),
     new OpenTelemetryTransportV3({
@@ -32,17 +37,33 @@ export const logger = winston.createLogger({
 });
 
 export function log(message: string, meta?: any): void {
-  logger.info(message, meta);
+  if (meta) {
+    logger.info({ message, meta });
+  } else {
+    logger.info(message);
+  }
 }
 
 export function err(message: string, meta?: any): void {
-  logger.error(message, meta);
+  if (meta) {
+    logger.error({ message, meta });
+  } else {
+    logger.error(message);
+  }
 }
 
 export function warn(message: string, meta?: any): void {
-  logger.warn(message, meta);
+  if (meta) {
+    logger.warn({ message, meta });
+  } else {
+    logger.warn(message);
+  }
 }
 
 export function debug(message: string, meta?: any): void {
-  logger.debug(message, meta);
+  if (meta) {
+    logger.debug({ message, meta });
+  } else {
+    logger.debug(message);
+  }
 }

@@ -1,13 +1,14 @@
 /* src/index.ts */
 
 import { Elysia } from "elysia";
+import { log, err } from "$utils/logger";
+
 import config from "./config";
 import { cors } from "@elysiajs/cors";
 import { yoga } from "@elysiajs/graphql-yoga";
 import typeDefs from "./graphql/typeDefs";
 import resolvers from "./graphql/resolvers";
 import { useResponseCache } from "@graphql-yoga/plugin-response-cache";
-import { log, err } from "$utils/logger";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -135,6 +136,19 @@ const healthCheck = new Elysia().get("/health", async () => {
   };
 });
 
+const getClientIp = (request: Request): string => {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    // Return the first IP in the list if it's a comma-separated list
+    return forwardedFor.split(',')[0].trim();
+  }
+  return request.headers.get("cf-connecting-ip") ||
+         request.headers.get("x-real-ip") ||
+         request.headers.get("x-client-ip") ||
+         request.socket?.remoteAddress ||
+         "unknown";
+};
+
 const app = new Elysia()
   .onStart(() => {
     log("The server has started!");
@@ -155,16 +169,11 @@ const app = new Elysia()
     }
   })
   .onRequest((context) => {
-    log("All headers:", Object.fromEntries(context.request.headers.entries()));
+    log("All header context:", Object.fromEntries(context.request.headers.entries()));
     const requestId = ulid();
     context.set.headers["X-Request-ID"] = requestId;
 
-    const clientIp =
-      context.request.headers.get("x-forwarded-for") ||
-      context.request.headers.get("cf-connecting-ip") ||
-      context.request.headers.get("x-real-ip") ||
-      context.request.headers.get("remote-addr") ||
-      context.request.headers.get("x-client-ip") || "unknown";
+    const clientIp = getClientIp(context.request);
 
     const cspDirectives = [
       "default-src 'self'",
@@ -208,11 +217,13 @@ const app = new Elysia()
     log("Incoming request", {
       requestId,
       method,
-      url: context.request.url,
-      userAgent: context.request.headers.get("user-agent"),
-      forwardedFor: context.request.headers.get("x-forwarded-for"),
+      url: url.toString(),
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams),
+      userAgent: context.request.headers.get("user-agent") || "unknown",
+      forwardedFor: context.request.headers.get("x-forwarded-for") || "none",
       clientIp,
-      remoteAddress: context.request.ip || "unknown",
+      remoteAddress: context.request.socket?.remoteAddress || "unknown",
     });
   })
   .onAfterHandle((context) => {
@@ -225,10 +236,12 @@ const app = new Elysia()
       requestId: context.set.headers["X-Request-ID"],
       method: context.request.method,
       url: context.request.url,
+      path: new URL(context.request.url).pathname,
       status: context.set.status,
       duration: `${duration}ms`,
     });
   });
+
 
 const server = app.listen(SERVER_PORT);
 log(`GraphQL server running on port:${SERVER_PORT}`);
