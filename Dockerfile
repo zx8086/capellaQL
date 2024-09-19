@@ -1,17 +1,7 @@
 # Dockerfile
 
-# Use Debian Slim as the base image
-FROM debian:stable-slim AS base
-
-# Install necessary dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL https://bun.sh/install | bash
-
-# Add Bun to PATH
-ENV PATH="/root/.bun/bin:${PATH}"
+# Use Bun Canary Distroless as the base image
+FROM oven/bun:latest AS base
 
 # Set environment variables
 ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
@@ -36,7 +26,6 @@ ENV NODE_ENV=development
 COPY package.json ./
 RUN bun install
 COPY . .
-COPY .env .env
 CMD ["bun", "run", "dev"]
 
 # Install dependencies into temp directory
@@ -67,11 +56,7 @@ ENV ENABLE_OPENTELEMETRY=true
 
 COPY package.json ./
 RUN bun install --production
-COPY --from=prerelease /usr/src/app/dist ./dist
-COPY src ./src
-
-# Create bun user and group
-RUN groupadd -r bun && useradd -r -g bun bun
+COPY . .
 
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app
@@ -79,4 +64,4 @@ RUN chown -R bun:bun /usr/src/app
 # Run the application
 USER bun
 EXPOSE 4000/tcp
-CMD ["bun", "run", "src/index.ts"]
+CMD ["bun", "run", "start"]

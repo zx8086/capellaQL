@@ -92,21 +92,34 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          declare -a build_args=()
-          while IFS= read -r line || [[ -n "$line" ]]; do
-            if [[ ! "$line" =~ ^\s*# && -n "$line" ]]; then
-              key=$(echo "$line" | cut -d '=' -f1)
-              value=$(echo "$line" | cut -d '=' -f2-)
-              build_args+=("--build-arg" "${key}=${value}")
-            fi
-          done < .env
-
-          echo "Debug: build_args=${build_args[*]}"
-
           docker buildx build \
             --push \
+            --target release \
             -t zx8086/capellaql:latest \
-            "${build_args[@]}" \
+            --build-arg BASE_URL=${{ vars.BASE_URL }} \
+            --build-arg PORT=${{ vars.PORT }} \
+            --build-arg LOG_LEVEL=${{ vars.LOG_LEVEL }} \
+            --build-arg LOG_MAX_SIZE=${{ vars.LOG_MAX_SIZE }} \
+            --build-arg LOG_MAX_FILES=${{ vars.LOG_MAX_FILES }} \
+            --build-arg YOGA_RESPONSE_CACHE_TTL=${{ vars.YOGA_RESPONSE_CACHE_TTL }} \
+            --build-arg COUCHBASE_URL=${{ secrets.COUCHBASE_URL }} \
+            --build-arg COUCHBASE_USERNAME=${{ secrets.COUCHBASE_USERNAME }} \
+            --build-arg COUCHBASE_PASSWORD=${{ secrets.COUCHBASE_PASSWORD }} \
+            --build-arg COUCHBASE_BUCKET=${{ vars.COUCHBASE_BUCKET }} \
+            --build-arg COUCHBASE_SCOPE=${{ vars.COUCHBASE_SCOPE }} \
+            --build-arg COUCHBASE_COLLECTION=${{ vars.COUCHBASE_COLLECTION }} \
+            --build-arg SERVICE_NAME=${{ vars.SERVICE_NAME }} \
+            --build-arg SERVICE_VERSION=${{ vars.SERVICE_VERSION }} \
+            --build-arg DEPLOYMENT_ENVIRONMENT=${{ vars.DEPLOYMENT_ENVIRONMENT }} \
+            --build-arg TRACES_ENDPOINT=${{ vars.TRACES_ENDPOINT }} \
+            --build-arg METRICS_ENDPOINT=${{ vars.METRICS_ENDPOINT }} \
+            --build-arg LOGS_ENDPOINT=${{ vars.LOGS_ENDPOINT }} \
+            --build-arg METRIC_READER_INTERVAL=${{ vars.METRIC_READER_INTERVAL }} \
+            --build-arg CONSOLE_METRIC_READER_INTERVAL=${{ vars.CONSOLE_METRIC_READER_INTERVAL }} \
+            --build-arg ENABLE_FILE_LOGGING=${{ vars.ENABLE_FILE_LOGGING }} \
+            --build-arg ENABLE_OPENTELEMETRY=${{ vars.ENABLE_OPENTELEMETRY }} \
+            --build-arg SUMMARY_LOG_INTERVAL=${{ vars.SUMMARY_LOG_INTERVAL }} \
+            --build-arg ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }} \
             .
 
       # New step to verify the Docker image

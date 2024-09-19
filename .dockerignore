@@ -11,5 +11,4 @@ Dockerfile
 .vscode
 .yarn
 .yarnrc.yml
-bun.lockb
 dist
