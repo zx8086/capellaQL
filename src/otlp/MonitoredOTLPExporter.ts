@@ -21,7 +21,7 @@ export abstract class MonitoredOTLPExporter<T> {
   constructor(exporterConfig: OTLPExporterNodeConfigBase, endpoint: string, timeoutMillis: number = 60000) {
     this.url = exporterConfig.url || endpoint;
     this.timeoutMillis = timeoutMillis;
-    log(`${this.constructor.name} initialized with URL: ${this.url} and timeout: ${this.timeoutMillis}ms`);
+    debug(`${this.constructor.name} initialized with URL: ${this.url} and timeout: ${this.timeoutMillis}ms`);
 
     this.logIntervalMs = otlpConfig.logIntervalMs;
     if (typeof this.logIntervalMs !== "number" || isNaN(this.logIntervalMs)) {
@@ -30,7 +30,7 @@ export abstract class MonitoredOTLPExporter<T> {
       );
       this.logIntervalMs = config.openTelemetry.SUMMARY_LOG_INTERVAL;
     } else {
-      log(
+      debug(
         `${this.constructor.name} log interval: ${this.logIntervalMs}ms`,
       );
     }
@@ -42,7 +42,7 @@ export abstract class MonitoredOTLPExporter<T> {
 
   private logStatistics(): void {
     const successRate = (this.successfulExports / this.totalExports) * 100 || 0;
-    debug(`OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`);
+    log(`OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`);
   }
 
   protected async checkNetworkConnectivity(): Promise<void> {
@@ -98,7 +98,7 @@ export abstract class MonitoredOTLPExporter<T> {
 
   protected logSuccess(itemCount: number, duration: number): void {
     const itemType = this.getItemType(itemCount);
-    debug(
+    log(
       `Successfully exported ${itemCount} ${itemType} in ${duration}ms`,
     );
   }
