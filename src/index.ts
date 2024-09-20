@@ -1,6 +1,6 @@
 /* src/index.ts */
 
-import { Elysia } from "elysia";
+import { Elysia, type Context } from "elysia";
 import { log, err } from "$utils/logger";
 
 import config from "./config";
@@ -124,7 +124,6 @@ const createYogaOptions = () => ({
         });
       },
     },
-    // Add this new plugin
     {
       onParse: ({ params }) => {
         const span = trace.getActiveSpan();
@@ -133,7 +132,7 @@ const createYogaOptions = () => ({
           span.setAttribute('graphql.query', params.source);
         }
       },
-      onValidate: ({ schema, document }) => {
+      onValidate: ({ document }) => {
         const span = trace.getActiveSpan();
         if (span) {
           span.setAttribute('graphql.operation_name', document.definitions[0]?.kind === 'OperationDefinition' ? document.definitions[0].name?.value || 'Unknown' : 'Unknown');
@@ -278,14 +277,14 @@ const app = new Elysia()
           const body = await clonedRequest.json() as { query?: string, operationName?: string, variables?: Record<string, unknown> } | undefined;
           if (body && typeof body === 'object') {
             if (body.operationName) {
-              span.updateName(`GraphQL: ${body.operationName}`);
-              span.setAttribute('graphql.operation_name', body.operationName);
+              span?.updateName(`GraphQL: ${body.operationName}`);
+              span?.setAttribute('graphql.operation_name', body.operationName);
             }
             if (body.query) {
-              span.setAttribute('graphql.query', body.query);
+              span?.setAttribute('graphql.query', body.query);
             }
             if (body.variables) {
-              span.setAttribute('graphql.variables', JSON.stringify(body.variables));
+              span?.setAttribute('graphql.variables', JSON.stringify(body.variables));
             }
           }
         }
@@ -296,7 +295,7 @@ const app = new Elysia()
         span.setStatus({ code: SpanStatusCode.ERROR });
         throw error;
       } finally {
-        span.end();
+        span?.end();
       }
     });
   })
@@ -336,13 +335,13 @@ const gracefulShutdown = async (signal: string) => {
   process.on(signal, () => gracefulShutdown(signal));
 });
 
-function getSpanName(context: Elysia.Context): string {
+function getSpanName(context: Context): string {
   const method = context.request.method;
   const url = new URL(context.request.url);
   const path = url.pathname;
 
   if (path === '/health') {
-    return `${method} Health`;
+    return `${method} /health`;
   } else if (path === '/graphql') {
     return 'GraphQL Request';
   } else {
