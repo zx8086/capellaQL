@@ -31,6 +31,7 @@
     "@opentelemetry/tracing": "^0.24.0",
     "@opentelemetry/winston-transport": "^0.5.0",
     "@snyk/protect": "latest",
+    "@types/k6": "^0.53.2",
     "couchbase": "^4.4.1",
     "dns": "^0.2.2",
     "elastic-apm-node": "^4.7.3",

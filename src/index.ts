@@ -66,6 +66,11 @@ function getRateLimitKey(request: Request): string {
 }
 
 function checkRateLimit(request: Request): boolean {
+  const userAgent = request.headers.get("user-agent");
+  if (userAgent === "K6TestAgent/1.0") {
+    return false; // Ignore rate limit for K6 test agent
+  }
+
   const rateLimitKey = getRateLimitKey(request);
   const now = Date.now();
   const clientData = rateLimitStore.get(rateLimitKey) || {
