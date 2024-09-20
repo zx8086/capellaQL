@@ -91,7 +91,7 @@ jobs:
         with:
           version: "lab:latest"
           driver: cloud
-          endpoint: "<ORG>/default"
+          endpoint: "zx8086/cldbuild"
           install: true
 
       - name: Build and push Docker image
