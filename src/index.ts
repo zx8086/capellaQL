@@ -1,6 +1,6 @@
 /* src/index.ts */
 
-import { Elysia, type Context } from "elysia";
+import { Elysia } from "elysia";
 import { log, err } from "$utils/logger";
 
 import config from "./config";
@@ -335,7 +335,7 @@ const gracefulShutdown = async (signal: string) => {
   process.on(signal, () => gracefulShutdown(signal));
 });
 
-function getSpanName(context: Context): string {
+function getSpanName(context: any): string {
   const method = context.request.method;
   const url = new URL(context.request.url);
   const path = url.pathname;
