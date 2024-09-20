@@ -125,10 +125,10 @@ jobs:
             SUMMARY_LOG_INTERVAL=${{ vars.SUMMARY_LOG_INTERVAL }}
             ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
 
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+      # - name: Move cache
+      #   run: |
+      #     rm -rf /tmp/.buildx-cache
+      #     mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
