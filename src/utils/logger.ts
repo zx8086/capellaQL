@@ -6,6 +6,7 @@ import { OpenTelemetryTransportV3 } from "@opentelemetry/winston-transport";
 import DailyRotateFile from "winston-daily-rotate-file";
 import path from "path";
 import { config } from "$config";
+import { trace, context, type SpanContext } from "@opentelemetry/api";
 
 const rootDir = path.join(__dirname, "..", "..");
 const logsDir = path.join(rootDir, "logs");
@@ -14,7 +15,18 @@ const customFormat = winston.format.combine(
   ecsFormat({ convertReqRes: true, apmIntegration: true }),
   winston.format((info) => {
     const { '@timestamp': timestamp, 'ecs.version': ecsVersion, level, message, ...rest } = info;
-    return { '@timestamp': timestamp, 'ecs.version': ecsVersion, level, log: { level }, message, ...rest };
+    return {
+      '@timestamp': timestamp,
+      'ecs.version': ecsVersion,
+      level,
+      log: { level },
+      message,
+      trace: {
+        id: info['trace']?.id || '',
+        span: { id: info['trace']?.['span']?.id || '' }
+      },
+      ...rest
+    };
   })()
 );
 
@@ -37,33 +49,69 @@ export const logger = winston.createLogger({
 });
 
 export function log(message: string, meta?: any): void {
-  if (meta) {
-    logger.info({ message, meta });
-  } else {
-    logger.info(message);
-  }
+  const ctx = context.active();
+  const span = trace.getSpan(ctx);
+  const spanContext: SpanContext | undefined = span?.spanContext();
+
+  const logData = {
+    message,
+    meta,
+    trace: spanContext ? {
+      id: spanContext.traceId,
+      span: { id: spanContext.spanId }
+    } : undefined
+  };
+
+  logger.info(logData);
 }
 
 export function err(message: string, meta?: any): void {
-  if (meta) {
-    logger.error({ message, meta });
-  } else {
-    logger.error(message);
-  }
+  const ctx = context.active();
+  const span = trace.getSpan(ctx);
+  const spanContext: SpanContext | undefined = span?.spanContext();
+
+  const logData = {
+    message,
+    meta,
+    trace: spanContext ? {
+      id: spanContext.traceId,
+      span: { id: spanContext.spanId }
+    } : undefined
+  };
+
+  logger.error(logData);
 }
 
 export function warn(message: string, meta?: any): void {
-  if (meta) {
-    logger.warn({ message, meta });
-  } else {
-    logger.warn(message);
-  }
+  const ctx = context.active();
+  const span = trace.getSpan(ctx);
+  const spanContext: SpanContext | undefined = span?.spanContext();
+
+  const logData = {
+    message,
+    meta,
+    trace: spanContext ? {
+      id: spanContext.traceId,
+      span: { id: spanContext.spanId }
+    } : undefined
+  };
+
+  logger.warn(logData);
 }
 
 export function debug(message: string, meta?: any): void {
-  if (meta) {
-    logger.debug({ message, meta });
-  } else {
-    logger.debug(message);
-  }
+  const ctx = context.active();
+  const span = trace.getSpan(ctx);
+  const spanContext: SpanContext | undefined = span?.spanContext();
+
+  const logData = {
+    message,
+    meta,
+    trace: spanContext ? {
+      id: spanContext.traceId,
+      span: { id: spanContext.spanId }
+    } : undefined
+  };
+
+  logger.debug(logData);
 }

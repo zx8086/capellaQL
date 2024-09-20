@@ -1,6 +1,7 @@
 /* src/instrumentation.ts */
 
 import { debug, log, warn, err } from "$utils/simpleLogger";
+import { trace, context } from "@opentelemetry/api";
 
 log("Starting Application - Couchbase Capella GraphQL API Service");
 
@@ -288,16 +289,10 @@ export function recordHttpRequest(method: string, route: string) {
 }
 
 export function recordHttpResponseTime(duration: number) {
-  if (INSTRUMENTATION_ENABLED && isInitialized) {
-    if (httpResponseTimeHistogram) {
-      httpResponseTimeHistogram.record(duration / 1000);
-      debug(`Recorded HTTP response time: ${duration}ms`);
-    } else {
-      err("HTTP response time histogram not initialized");
-    }
-  } else {
-    warn(
-      `Skipped recording HTTP response time: instrumentation disabled`,
-    );
+  if (INSTRUMENTATION_ENABLED && isInitialized && httpResponseTimeHistogram) {
+    const activeContext = context.active();
+    const span = trace.getSpan(activeContext);
+    const traceId = span?.spanContext().traceId;
+    httpResponseTimeHistogram.record(duration / 1000, { traceId });
   }
 }

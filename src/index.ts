@@ -18,6 +18,8 @@ import {
 } from "./instrumentation";
 import { ulid } from "ulid";
 import { isIP } from 'net';
+import { context as otelContext, trace } from "@opentelemetry/api";
+import { SpanStatusCode } from "@opentelemetry/api";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,6 +124,22 @@ const createYogaOptions = () => ({
         });
       },
     },
+    // Add this new plugin
+    {
+      onParse: ({ params }) => {
+        const span = trace.getActiveSpan();
+        if (span) {
+          span.setAttribute('graphql.operation_name', params.operationName || 'Unknown');
+          span.setAttribute('graphql.query', params.source);
+        }
+      },
+      onValidate: ({ schema, document }) => {
+        const span = trace.getActiveSpan();
+        if (span) {
+          span.setAttribute('graphql.operation_name', document.definitions[0]?.kind === 'OperationDefinition' ? document.definitions[0].name?.value || 'Unknown' : 'Unknown');
+        }
+      },
+    },
   ],
 });
 
@@ -184,65 +202,102 @@ const app = new Elysia()
   )
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
-  .onRequest(({ request, set }) => {
-    if (checkRateLimit(request)) {
-      set.status = 429;
-      return "Too Many Requests";
+  .onRequest(async (context) => {
+    if (checkRateLimit(context.request)) {
+      context.set.status = 429;
+      return { error: "Too Many Requests" };
     }
-  })
-  .onRequest((context) => {
-    console.log("All header context:", Object.fromEntries(context.request.headers.entries()));
-    const requestId = ulid();
-    context.set.headers["X-Request-ID"] = requestId;
+    const tracer = trace.getTracer('elysia-app');
+    return tracer.startActiveSpan(getSpanName(context), async (span) => {
+      try {
+        const requestId = ulid();
+        context.set.headers["X-Request-ID"] = requestId;
 
-    const clientIp = getClientIp(context.request);
+        const clientIp = getClientIp(context.request);
 
-    const cspDirectives = [
-      "default-src 'self'",
-      `script-src 'self' 'unsafe-inline' ${IS_DEVELOPMENT ? "'unsafe-eval'" : ""} https://unpkg.com`,
-      `style-src 'self' 'unsafe-inline' https://unpkg.com`,
-      "img-src 'self' data: https://raw.githubusercontent.com",
-      "font-src 'self' https://unpkg.com",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'self'",
-      "connect-src 'self'",
-    ];
-    ALLOWED_ORIGINS.forEach((origin) => {
-      cspDirectives.forEach((directive, index) => {
-        if (!directive.includes("'none'")) {
-          cspDirectives[index] += ` ${origin.trim()}`;
+        const cspDirectives = [
+          "default-src 'self'",
+          `script-src 'self' 'unsafe-inline' ${IS_DEVELOPMENT ? "'unsafe-eval'" : ""} https://unpkg.com`,
+          `style-src 'self' 'unsafe-inline' https://unpkg.com`,
+          "img-src 'self' data: https://raw.githubusercontent.com",
+          "font-src 'self' https://unpkg.com",
+          "object-src 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+          "frame-ancestors 'self'",
+          "connect-src 'self'",
+        ];
+        ALLOWED_ORIGINS.forEach((origin) => {
+          cspDirectives.forEach((directive, index) => {
+            if (!directive.includes("'none'")) {
+              cspDirectives[index] += ` ${origin.trim()}`;
+            }
+          });
+        });
+
+        if (IS_DEVELOPMENT) {
+          cspDirectives[1] += " 'unsafe-eval'";
         }
-      });
-    });
 
-    if (IS_DEVELOPMENT) {
-      cspDirectives[1] += " 'unsafe-eval'";
-    }
+        // Set CSP header
+        context.set.headers["Content-Security-Policy"] = cspDirectives.join("; ");
 
-    // Set CSP header
-    context.set.headers["Content-Security-Policy"] = cspDirectives.join("; ");
+        context.set.headers["X-XSS-Protection"] = "1; mode=block";
+        context.set.headers["X-Frame-Options"] = "SAMEORIGIN";
+        context.set.headers["X-Content-Type-Options"] = "nosniff";
+        context.set.headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
 
-    context.set.headers["X-XSS-Protection"] = "1; mode=block";
-    context.set.headers["X-Frame-Options"] = "SAMEORIGIN";
-    context.set.headers["X-Content-Type-Options"] = "nosniff";
-    context.set.headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        const startTime = Date.now();
+        context.store = { startTime };
+        const method = context.request.method;
+        const url = new URL(context.request.url);
+        const route = url.pathname;
+        recordHttpRequest(method, route);
 
-    const startTime = Date.now();
-    context.store = { startTime };
-    const method = context.request.method;
-    const url = new URL(context.request.url);
-    const route = url.pathname;
-    recordHttpRequest(method, route);
+        const ctx = otelContext.active();
+        const span = trace.getSpan(ctx);
+        if (span) {
+          span.setAttributes({
+            'http.request_id': requestId,
+            'http.method': context.request.method,
+            'http.url': context.request.url,
+          });
+        }
 
-    log("Incoming request", {
-      requestId,
-      method,
-      url: context.request.url,
-      userAgent: context.request.headers.get("user-agent"),
-      forwardedFor: context.request.headers.get("x-forwarded-for"),
-      clientIp,
+        log("Incoming request", {
+          requestId,
+          method,
+          url: context.request.url,
+          userAgent: context.request.headers.get("user-agent"),
+          forwardedFor: context.request.headers.get("x-forwarded-for"),
+          clientIp,
+        });
+
+        if (context.request.url.includes('/graphql')) {
+          const clonedRequest = context.request.clone();
+          const body = await clonedRequest.json() as { query?: string, operationName?: string, variables?: Record<string, unknown> } | undefined;
+          if (body && typeof body === 'object') {
+            if (body.operationName) {
+              span.updateName(`GraphQL: ${body.operationName}`);
+              span.setAttribute('graphql.operation_name', body.operationName);
+            }
+            if (body.query) {
+              span.setAttribute('graphql.query', body.query);
+            }
+            if (body.variables) {
+              span.setAttribute('graphql.variables', JSON.stringify(body.variables));
+            }
+          }
+        }
+
+      } catch (error) {
+        err("Error in onRequest handler", error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        throw error;
+      } finally {
+        span.end();
+      }
     });
   })
   .onAfterHandle((context) => {
@@ -280,3 +335,17 @@ const gracefulShutdown = async (signal: string) => {
 ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) => {
   process.on(signal, () => gracefulShutdown(signal));
 });
+
+function getSpanName(context: Elysia.Context): string {
+  const method = context.request.method;
+  const url = new URL(context.request.url);
+  const path = url.pathname;
+
+  if (path === '/health') {
+    return `${method} Health`;
+  } else if (path === '/graphql') {
+    return 'GraphQL Request';
+  } else {
+    return `${method} ${path}`;
+  }
+}
