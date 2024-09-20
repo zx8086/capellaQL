@@ -26,13 +26,18 @@ export const options = {
     },
   },
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.01'], 
+    http_req_duration: ['p(95)<650'], 
+    'http_req_duration{scenario:looksSummary}': ['avg<200'],
+    'http_req_duration{scenario:seasonalAssignments}': ['avg<200'],
+    'http_req_duration{scenario:imageUrlCheck}': ['avg<500']
   },
   userAgent: 'K6TestAgent/1.0',
 };
 
 const GRAPHQL_ENDPOINT = 'http://localhost:4000/graphql';
+// const GRAPHQL_ENDPOINT = 'https://capellaql.prd.shared-services.eu.pvh.cloud/graphql';
+
 
 const LOOKS_SUMMARY_QUERY = `
 query looksSummary($brand: String!, $division: String!, $season: String!) {

@@ -131,6 +131,11 @@ export abstract class MonitoredOTLPExporter<T> {
     clearInterval(this.logTimer as NodeJS.Timeout);
   }
 
+  protected logExportDuration(startTime: number): void {
+    const duration = Date.now() - startTime;
+    log(`${this.exporterType} export took ${duration}ms`);
+  }
+
   abstract shutdown(): Promise<void>;
 
   abstract forceFlush(): Promise<void>;
@@ -140,3 +145,4 @@ export abstract class MonitoredOTLPExporter<T> {
     resultCallback: (result: ExportResult) => void,
   ): Promise<void>;
 }
+

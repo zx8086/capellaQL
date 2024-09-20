@@ -70,12 +70,13 @@ const createResource = async () => {
   );
 };
 
-const commonConfig = {
-  timeoutMillis: 120000,
-  concurrencyLimit: 100,
-};
+const exporterTimeout = 300000; // 5 minutes
 
-const exporterTimeout = 120000; // 2 minutes
+const commonConfig = {
+  timeoutMillis: exporterTimeout,
+  concurrencyLimit: 100,
+  keepAlive: true,
+};
 
 export function initializeHttpMetrics() {
   if (INSTRUMENTATION_ENABLED && meter) {
@@ -125,6 +126,8 @@ async function initializeOpenTelemetry() {
         ...commonConfig,
       }, exporterTimeout) as unknown as PushMetricExporter;
 
+      log("Metric exporter created with timeout:", exporterTimeout);
+
       const logExporter = new MonitoredOTLPLogExporter({
         url: config.openTelemetry.LOGS_ENDPOINT,
         headers: { "Content-Type": "application/json" },
@@ -154,7 +157,7 @@ async function initializeOpenTelemetry() {
         new BatchLogRecordProcessor(logExporter, {
           maxExportBatchSize: 100,
           scheduledDelayMillis: 10000,
-          exportTimeoutMillis: 60000,
+          exportTimeoutMillis: exporterTimeout,
         }),
       );
 
@@ -191,7 +194,7 @@ async function initializeOpenTelemetry() {
       const batchSpanProcessor = new BatchSpanProcessor(traceExporter, {
         maxExportBatchSize: 512,
         scheduledDelayMillis: 5000,
-        exportTimeoutMillis: 30000,
+        exportTimeoutMillis: exporterTimeout,
       });
 
       sdk = new NodeSDK({

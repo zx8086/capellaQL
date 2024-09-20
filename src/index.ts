@@ -17,6 +17,7 @@ import {
   recordHttpResponseTime,
 } from "./instrumentation";
 import { ulid } from "ulid";
+import { isIP } from 'net';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,9 +49,9 @@ const ALLOWED_ORIGINS = config.application.ALLOWED_ORIGINS;
 const IS_DEVELOPMENT =
   config.openTelemetry.DEPLOYMENT_ENVIRONMENT === "development";
 
-// Update rate limiting
-const RATE_LIMIT = 500; // requests per minute per IP per endpoint
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute in milliseconds
+
+const RATE_LIMIT = 500;
+const RATE_LIMIT_WINDOW = 60 * 1000;
 
 const rateLimitStore = new Map<string, { count: number; timestamp: number }>();
 
@@ -68,7 +69,7 @@ function getRateLimitKey(request: Request): string {
 function checkRateLimit(request: Request): boolean {
   const userAgent = request.headers.get("user-agent");
   if (userAgent === "K6TestAgent/1.0") {
-    return false; // Ignore rate limit for K6 test agent
+    return false;
   }
 
   const rateLimitKey = getRateLimitKey(request);
@@ -144,14 +145,30 @@ const healthCheck = new Elysia().get("/health", async () => {
 const getClientIp = (request: Request): string => {
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
-    // Return the first IP in the list if it's a comma-separated list
-    return forwardedFor.split(',')[0].trim();
+    const ips = forwardedFor.split(',').map(ip => ip.trim());
+    for (const ip of ips) {
+      if (isIP(ip)) return ip;
+    }
   }
-  return request.headers.get("cf-connecting-ip") ||
-         request.headers.get("x-real-ip") ||
-         request.headers.get("x-client-ip") ||
-         request.socket?.remoteAddress ||
-         "unknown";
+  const otherIps = [
+    request.headers.get("cf-connecting-ip"),
+    request.headers.get("x-real-ip"),
+    request.headers.get("x-client-ip")
+  ];
+  for (const ip of otherIps) {
+    if (ip && isIP(ip)) return ip;
+  }
+  
+  // Log all headers for debugging
+  console.log("All headers:", Object.fromEntries(request.headers.entries()));
+  
+  // Log the entire request object (be cautious with sensitive data)
+  console.log("Request object:", JSON.stringify(request, null, 2));
+  
+  const remoteAddress = (request as any).socket?.remoteAddress;
+  if (remoteAddress && isIP(remoteAddress)) return remoteAddress;
+
+  return "unknown";
 };
 
 const app = new Elysia()
@@ -174,7 +191,7 @@ const app = new Elysia()
     }
   })
   .onRequest((context) => {
-    log("All header context:", Object.fromEntries(context.request.headers.entries()));
+    console.log("All header context:", Object.fromEntries(context.request.headers.entries()));
     const requestId = ulid();
     context.set.headers["X-Request-ID"] = requestId;
 
@@ -226,7 +243,6 @@ const app = new Elysia()
       userAgent: context.request.headers.get("user-agent"),
       forwardedFor: context.request.headers.get("x-forwarded-for"),
       clientIp,
-      remoteAddress: context.request.ip || "unknown",
     });
   })
   .onAfterHandle((context) => {
