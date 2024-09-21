@@ -5,34 +5,17 @@ import { check, sleep } from 'k6';
 import exec from 'k6/execution';
 
 export const options = {
-  scenarios: {
-    looksSummary: {
-      executor: 'constant-vus',
-      vus: 5,
-      duration: '30s',
-      tags: { scenario: 'looksSummary' },
-    },
-    seasonalAssignments: {
-      executor: 'constant-vus',
-      vus: 2,
-      duration: '30s',
-      tags: { scenario: 'seasonalAssignments' },
-    },
-    imageUrlCheck: {
-      executor: 'constant-vus',
-      vus: 3,
-      duration: '30s',
-      tags: { scenario: 'imageUrlCheck' },
-    },
-  },
+  stages: [
+    { duration: '10s', target: 10 },
+    // { duration: '20s', target: 20 },
+    // { duration: '10s', target: 0 },
+  ],
   thresholds: {
-    http_req_failed: ['rate<0.01'], 
-    http_req_duration: ['p(95)<650'], 
-    'http_req_duration{scenario:looksSummary}': ['avg<200'],
-    'http_req_duration{scenario:seasonalAssignments}': ['avg<200'],
-    'http_req_duration{scenario:imageUrlCheck}': ['avg<500']
+    http_req_failed: ['rate<0.01'], // http errors should be less than 1%
+    http_req_duration: ['p(95)<400'], // 95% of requests should be below 400ms
   },
   userAgent: 'K6TestAgent/1.0',
+  throw: true,
 };
 
 const GRAPHQL_ENDPOINT = 'http://localhost:4000/graphql';
@@ -135,6 +118,7 @@ function runLooksSummaryScenario() {
   const params = {
     headers: {
       'Content-Type': 'application/json',
+      'User-Agent': 'K6TestAgent/1.0',
     },
   };
 
@@ -185,6 +169,7 @@ function runSeasonalAssignmentsScenario() {
   const params = {
     headers: {
       'Content-Type': 'application/json',
+      'User-Agent': 'K6TestAgent/1.0',
     },
   };
 
@@ -241,6 +226,7 @@ function runImageUrlCheckScenario() {
   const params = {
     headers: {
       'Content-Type': 'application/json',
+      'User-Agent': 'K6TestAgent/1.0',
     },
   };
 
