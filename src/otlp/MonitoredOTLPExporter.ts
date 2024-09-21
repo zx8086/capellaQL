@@ -24,7 +24,7 @@ export abstract class MonitoredOTLPExporter<T> {
     debug(`${this.constructor.name} initialized with URL: ${this.url} and timeout: ${this.timeoutMillis}ms`);
 
     this.logIntervalMs = otlpConfig.logIntervalMs;
-    if (typeof this.logIntervalMs !== "number" || isNaN(this.logIntervalMs)) {
+    if (typeof this.logIntervalMs !== "number" || Number.isNaN(this.logIntervalMs)) {
       warn(
         `Invalid logIntervalMs: ${this.logIntervalMs}. Using default of 300000ms.`,
       );

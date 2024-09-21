@@ -33,7 +33,7 @@ export function getEnvOrThrow(key: string): string {
 export function getEnvNumberOrThrow(key: string): number {
   const value = getEnvOrThrow(key);
   const numberValue = Number(value);
-  if (isNaN(numberValue)) {
+  if (Number.isNaN(numberValue)) {
     throw new Error(`Environment variable ${key} must be a valid number`);
   }
   return numberValue;
