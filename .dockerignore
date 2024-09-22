@@ -66,3 +66,6 @@ logs
 
 # Vercel
 .vercel
+
+# k6
+/test
