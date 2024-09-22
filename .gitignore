@@ -46,3 +46,6 @@ logs
 /src/logs/*
 
 .vscode
+
+# k6
+/test
