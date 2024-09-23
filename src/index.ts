@@ -274,17 +274,20 @@ const app = new Elysia()
 
         if (context.request.url.includes('/graphql')) {
           const clonedRequest = context.request.clone();
-          const body = await clonedRequest.json() as { query?: string, operationName?: string, variables?: Record<string, unknown> } | undefined;
-          if (body && typeof body === 'object') {
-            if (body.operationName) {
-              span?.updateName(`GraphQL: ${body.operationName}`);
-              span?.setAttribute('graphql.operation_name', body.operationName);
-            }
-            if (body.query) {
-              span?.setAttribute('graphql.query', body.query);
-            }
-            if (body.variables) {
-              span?.setAttribute('graphql.variables', JSON.stringify(body.variables));
+          const text = await clonedRequest.text();
+          if (text) {
+            const body = JSON.parse(text) as { query?: string, operationName?: string, variables?: Record<string, unknown> } | undefined;
+            if (body && typeof body === 'object') {
+              if (body.operationName) {
+                span?.updateName(`GraphQL: ${body.operationName}`);
+                span?.setAttribute('graphql.operation_name', body.operationName);
+              }
+              if (body.query) {
+                span?.setAttribute('graphql.query', body.query);
+              }
+              if (body.variables) {
+                span?.setAttribute('graphql.variables', JSON.stringify(body.variables));
+              }
             }
           }
         }
