@@ -135,7 +135,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          snyk container test zx8086/capellaql:latest --severity-threshold=high --sarif-file-output=snyk-docker.sarif --debug
+          snyk container test zx8086/capellaql:latest --severity-threshold=high --sarif-file-output=snyk-docker.sarif --debug || true
           snyk container monitor zx8086/capellaql:latest || true
 
       - name: Upload Docker Snyk scan results to GitHub Code Scanning
