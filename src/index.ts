@@ -47,7 +47,11 @@ if (typeof globalThis["ENV_TRUE"] === "undefined") {
 
 const SERVER_PORT = config.application["PORT"];
 const YOGA_RESPONSE_CACHE_TTL = config.application["YOGA_RESPONSE_CACHE_TTL"];
-const ALLOWED_ORIGINS = config.application.ALLOWED_ORIGINS;
+// const ALLOWED_ORIGINS = Array.isArray(config.application.ALLOWED_ORIGINS)
+//   ? config.application.ALLOWED_ORIGINS
+//   : (config.application.ALLOWED_ORIGINS as string).split(',').map(origin => origin.trim());
+
+// console.log("Parsed ALLOWED_ORIGINS:", ALLOWED_ORIGINS);
 const IS_DEVELOPMENT =
   config.openTelemetry.DEPLOYMENT_ENVIRONMENT === "development";
 
@@ -195,13 +199,24 @@ const app = new Elysia()
   })
   .use(
     cors({
-      origin: ALLOWED_ORIGINS,
+      origin: ['*'],
       methods: ["GET", "POST", "OPTIONS"],
+      allowedHeaders: ["Content-Type"],
     }),
   )
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
+  .options("*", ({ set }) => {
+    set.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+    set.headers["Access-Control-Allow-Headers"] = "Content-Type";
+    set.headers["Access-Control-Max-Age"] = "86400"; // 24 hours
+    return new Response(null, { status: 204 });
+  })
   .onRequest(async (context) => {
+    context.set.headers["Access-Control-Allow-Origin"] = "*";
+    log("Request headers:", Object.fromEntries(context.request.headers.entries()));
+    log("Request method:", context.request.method);
+    log("Request origin:", context.request.headers.get("origin"));
     if (checkRateLimit(context.request)) {
       context.set.status = 429;
       return { error: "Too Many Requests" };
@@ -216,23 +231,16 @@ const app = new Elysia()
 
         const cspDirectives = [
           "default-src 'self'",
-          `script-src 'self' 'unsafe-inline' ${IS_DEVELOPMENT ? "'unsafe-eval'" : ""} https://unpkg.com`,
-          `style-src 'self' 'unsafe-inline' https://unpkg.com`,
-          "img-src 'self' data: https://raw.githubusercontent.com",
-          "font-src 'self' https://unpkg.com",
+          `script-src 'self' 'unsafe-inline' ${IS_DEVELOPMENT ? "'unsafe-eval'" : ""} https: http:`,
+          `style-src 'self' 'unsafe-inline' https: http:`,
+          "img-src 'self' data: https: http:",
+          "font-src 'self' https: http:",
           "object-src 'none'",
           "base-uri 'self'",
           "form-action 'self'",
-          "frame-ancestors 'self'",
-          "connect-src 'self'",
+          "frame-ancestors 'none'",
+          "connect-src 'self' https: http:",
         ];
-        ALLOWED_ORIGINS.forEach((origin) => {
-          cspDirectives.forEach((directive, index) => {
-            if (!directive.includes("'none'")) {
-              cspDirectives[index] += ` ${origin.trim()}`;
-            }
-          });
-        });
 
         if (IS_DEVELOPMENT) {
           cspDirectives[1] += " 'unsafe-eval'";
