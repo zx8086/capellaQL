@@ -206,17 +206,25 @@ const app = new Elysia()
   )
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
-  .options("*", ({ set }) => {
+  .options("*", ({ set, request }) => {
+    log('Handling OPTIONS request');
+    log('Origin:', request.headers.get('origin'));
+    log('Access-Control-Request-Method:', request.headers.get('access-control-request-method'));
+    log('Access-Control-Request-Headers:', request.headers.get('access-control-request-headers'));
+
+    set.headers["Access-Control-Allow-Origin"] = "*";
     set.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
     set.headers["Access-Control-Allow-Headers"] = "Content-Type";
-    set.headers["Access-Control-Max-Age"] = "86400"; // 24 hours
+    set.headers["Access-Control-Max-Age"] = "86400";
     return new Response(null, { status: 204 });
   })
   .onRequest(async (context) => {
     context.set.headers["Access-Control-Allow-Origin"] = "*";
-    log("Request headers:", Object.fromEntries(context.request.headers.entries()));
-    log("Request method:", context.request.method);
-    log("Request origin:", context.request.headers.get("origin"));
+    log('Incoming request');
+    log('Method:', context.request.method);
+    log('Origin:', context.request.headers.get('origin'));
+    log('Access-Control-Request-Method:', context.request.headers.get('access-control-request-method'));
+    log('Access-Control-Request-Headers:', context.request.headers.get('access-control-request-headers'));
     if (checkRateLimit(context.request)) {
       context.set.status = 429;
       return { error: "Too Many Requests" };
