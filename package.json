@@ -29,7 +29,7 @@
     "@opentelemetry/tracing": "^0.24.0",
     "@opentelemetry/winston-transport": "^0.6.0",
     "@snyk/protect": "^1.1293.1",
-    "@types/k6": "^0.53.2",
+    "@types/k6": "^0.54.1",
     "couchbase": "^4.4.1",
     "dns": "^0.2.2",
     "dotenv": "^16.4.5",
