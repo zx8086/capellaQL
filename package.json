@@ -27,7 +27,7 @@
     "@opentelemetry/sdk-trace-node": "^1.26.0",
     "@opentelemetry/semantic-conventions": "^1.27.0",
     "@opentelemetry/tracing": "^0.24.0",
-    "@opentelemetry/winston-transport": "^0.6.0",
+    "@opentelemetry/winston-transport": "^0.7.0",
     "@snyk/protect": "^1.1293.1",
     "@types/k6": "^0.53.2",
     "couchbase": "^4.4.1",
