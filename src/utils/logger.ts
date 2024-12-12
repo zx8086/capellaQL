@@ -14,20 +14,26 @@ const logsDir = path.join(rootDir, "logs");
 const customFormat = winston.format.combine(
   ecsFormat({ convertReqRes: true, apmIntegration: true }),
   winston.format((info) => {
-    const { '@timestamp': timestamp, 'ecs.version': ecsVersion, level, message, ...rest } = info;
+    const {
+      "@timestamp": timestamp,
+      "ecs.version": ecsVersion,
+      level,
+      message,
+      ...rest
+    } = info;
     return {
-      '@timestamp': timestamp,
-      'ecs.version': ecsVersion,
+      "@timestamp": timestamp,
+      "ecs.version": ecsVersion,
       level,
       log: { level },
       message,
       trace: {
-        id: info['trace']?.id || '',
-        span: { id: info['trace']?.['span']?.id || '' }
+        id: info["trace"]?.id || "",
+        span: { id: info["trace"]?.["span"]?.id || "" },
       },
-      ...rest
+      ...rest,
     };
-  })()
+  })(),
 );
 
 export const logger = winston.createLogger({
@@ -38,13 +44,13 @@ export const logger = winston.createLogger({
     new OpenTelemetryTransportV3({
       level: config.application.LOG_LEVEL,
     }),
-    new DailyRotateFile({
-      filename: path.join(logsDir, "couchbase-capellaQL-service-%DATE%.log"),
-      datePattern: "YYYY-MM-DD",
-      zippedArchive: true,
-      maxSize: config.application.LOG_MAX_SIZE,
-      maxFiles: config.application.LOG_MAX_FILES,
-    }),
+    // new DailyRotateFile({
+    //   filename: path.join(logsDir, "couchbase-capellaQL-service-%DATE%.log"),
+    //   datePattern: "YYYY-MM-DD",
+    //   zippedArchive: true,
+    //   maxSize: config.application.LOG_MAX_SIZE,
+    //   maxFiles: config.application.LOG_MAX_FILES,
+    // }),
   ],
 });
 
@@ -56,10 +62,12 @@ export function log(message: string, meta?: any): void {
   const logData = {
     message,
     meta,
-    trace: spanContext ? {
-      id: spanContext.traceId,
-      span: { id: spanContext.spanId }
-    } : undefined
+    trace: spanContext
+      ? {
+          id: spanContext.traceId,
+          span: { id: spanContext.spanId },
+        }
+      : undefined,
   };
 
   logger.info(logData);
@@ -73,10 +81,12 @@ export function err(message: string, meta?: any): void {
   const logData = {
     message,
     meta,
-    trace: spanContext ? {
-      id: spanContext.traceId,
-      span: { id: spanContext.spanId }
-    } : undefined
+    trace: spanContext
+      ? {
+          id: spanContext.traceId,
+          span: { id: spanContext.spanId },
+        }
+      : undefined,
   };
 
   logger.error(logData);
@@ -90,10 +100,12 @@ export function warn(message: string, meta?: any): void {
   const logData = {
     message,
     meta,
-    trace: spanContext ? {
-      id: spanContext.traceId,
-      span: { id: spanContext.spanId }
-    } : undefined
+    trace: spanContext
+      ? {
+          id: spanContext.traceId,
+          span: { id: spanContext.spanId },
+        }
+      : undefined,
   };
 
   logger.warn(logData);
@@ -107,10 +119,12 @@ export function debug(message: string, meta?: any): void {
   const logData = {
     message,
     meta,
-    trace: spanContext ? {
-      id: spanContext.traceId,
-      span: { id: spanContext.spanId }
-    } : undefined
+    trace: spanContext
+      ? {
+          id: spanContext.traceId,
+          span: { id: spanContext.spanId },
+        }
+      : undefined,
   };
 
   logger.debug(logData);
