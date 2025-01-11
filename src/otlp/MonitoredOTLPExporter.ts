@@ -2,7 +2,8 @@
 
 import { promises as dnsPromises } from "node:dns";
 import { isIP } from "node:net";
-import { hostname, loadavg, totalmem, freemem } from "node:os";
+import { loadavg, totalmem, freemem, hostname } from "node:os";
+import { dns } from "bun";
 import { otlpConfig } from "./otlpConfig";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import type { ExportResult } from "@opentelemetry/core";
@@ -11,6 +12,9 @@ import { log, warn, err, debug } from "$utils/simpleLogger";
 
 export abstract class MonitoredOTLPExporter<T> {
   private logTimer: any;
+  private readonly hostName: string;
+  private readonly port: number;
+  private dnsPrefetchInitiated: boolean = false;
   protected totalExports: number = 0;
   protected successfulExports: number = 0;
   protected readonly logIntervalMs: number;
@@ -25,6 +29,17 @@ export abstract class MonitoredOTLPExporter<T> {
   ) {
     this.url = exporterConfig.url || endpoint;
     this.timeoutMillis = timeoutMillis;
+
+    const url = new URL(this.url);
+    this.hostName = url.hostname;
+    this.port = url.port
+      ? parseInt(url.port)
+      : url.protocol === "https:"
+        ? 443
+        : 80;
+
+    this.initializeDNSPrefetch();
+
     debug(
       `${this.constructor.name} initialized with URL: ${this.url} and timeout: ${this.timeoutMillis}ms`,
     );
@@ -47,32 +62,104 @@ export abstract class MonitoredOTLPExporter<T> {
     }, this.logIntervalMs);
   }
 
+  private async initializeDNSPrefetch(): Promise<void> {
+    try {
+      const initialStats = dns.getCacheStats();
+      debug("Initial DNS cache stats:", initialStats);
+
+      dns.prefetch(this.hostName);
+      this.dnsPrefetchInitiated = true;
+      debug(`DNS prefetch initiated for ${this.hostName} (port ${this.port})`);
+
+      await this.verifyDNSPrefetch();
+    } catch (error) {
+      err("DNS prefetch initialization failed:", error);
+    }
+  }
+
+  private async verifyDNSPrefetch(): Promise<void> {
+    try {
+      const beforeStats = dns.getCacheStats();
+      const addresses = await dnsPromises.resolve4(this.hostName, {
+        ttl: true,
+      });
+      const afterStats = dns.getCacheStats();
+
+      const cacheEffective =
+        afterStats.cacheHitsCompleted > beforeStats.cacheHitsCompleted;
+
+      debug(`DNS prefetch verification:
+        Host: ${this.hostName}
+        Addresses: ${addresses.map((addr) => (typeof addr === "string" ? addr : addr.address)).join(", ")}
+        Cache effective: ${cacheEffective}
+        TTL configured: ${process.env["BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS"] || "30"} seconds
+      `);
+    } catch (error) {
+      err("DNS prefetch verification failed:", error);
+    }
+  }
+
   private logStatistics(): void {
-    const hostName = hostname();
+    const machineName = hostname();
     const successRate = (this.successfulExports / this.totalExports) * 100 || 0;
+    const dnsStats = dns.getCacheStats();
+
     log(
-      `[Host: ${hostName}] OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`,
+      `[Host: ${machineName}] OpenTelemetry ${this.exporterType} Export Statistics:
+      Total Exports: ${this.totalExports}
+      Successful Exports: ${this.successfulExports}
+      Success Rate: ${successRate.toFixed(2)}%
+      DNS Cache Hits: ${dnsStats.cacheHitsCompleted}
+      DNS Cache Size: ${dnsStats.size}`,
     );
   }
 
   protected async checkNetworkConnectivity(): Promise<void> {
-    const url = new URL(this.url);
-    const host = url.hostname;
+    if (!this.dnsPrefetchInitiated) {
+      debug("DNS prefetch not initiated, doing it now...");
+      await this.initializeDNSPrefetch();
+    }
 
-    debug(`Checking network connectivity to ${host}`);
-
-    if (!isIP(host)) {
+    if (!isIP(this.hostName)) {
       try {
-        const addresses = await dnsPromises.resolve4(host);
-        debug(`DNS resolution for ${host}: ${addresses.join(", ")}`);
+        const beforeStats = dns.getCacheStats();
+        debug(`DNS cache stats before resolve:`, beforeStats);
+
+        const addresses = await dnsPromises.resolve4(this.hostName, {
+          ttl: true,
+        });
+        debug(
+          `DNS resolution for ${this.hostName}: ${addresses
+            .map((addr) =>
+              typeof addr === "string"
+                ? addr
+                : `${addr.address} (TTL: ${addr.ttl})`,
+            )
+            .join(", ")}`,
+        );
+
+        const afterStats = dns.getCacheStats();
+        debug(`DNS cache stats after resolve:`, afterStats);
+
+        const hitRate =
+          afterStats.totalCount > 0
+            ? (
+                ((afterStats.cacheHitsCompleted +
+                  afterStats.cacheHitsInflight) /
+                  afterStats.totalCount) *
+                100
+              ).toFixed(2)
+            : "0.00";
+        debug(`DNS cache hit rate: ${hitRate}%`);
       } catch (error) {
-        err(`DNS resolution failed for ${host}:`, error);
+        err(`DNS resolution failed for ${this.hostName}:`, error);
       }
     }
   }
 
   protected logSystemResources(): void {
-    const hostName = hostname();
+    const machineName = hostname();
+    const dnsStats = dns.getCacheStats();
     const cpuUsage = loadavg()[0];
     const totalMemory = totalmem();
     const freeMemory = freemem();
@@ -82,7 +169,13 @@ export abstract class MonitoredOTLPExporter<T> {
     const processMemory = process.memoryUsage();
     const processCpuUsage = process.cpuUsage();
 
-    debug(`Host: ${hostName}`);
+    debug(`Host: ${machineName}`);
+    debug(`DNS Cache Status:
+      Size: ${dnsStats.size}
+      Hits: ${dnsStats.cacheHitsCompleted}
+      Misses: ${dnsStats.cacheMisses}
+      Total Requests: ${dnsStats.totalCount}
+    `);
     debug(`System CPU Usage (1m average): ${cpuUsage.toFixed(2)}`);
     debug(`System Memory Usage: ${memoryUsage.toFixed(2)}%`);
     debug(
@@ -121,6 +214,7 @@ export abstract class MonitoredOTLPExporter<T> {
     itemCount: number,
     duration: number,
   ): void {
+    const dnsStats = dns.getCacheStats();
     err(`Failed to export ${itemCount} items after ${duration}ms:`);
     if (error instanceof Error) {
       err(`Error name: ${error.name}`);
@@ -132,10 +226,18 @@ export abstract class MonitoredOTLPExporter<T> {
     err(
       `Current memory usage: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
     );
+    err(`DNS Cache Status at failure:
+      Size: ${dnsStats.size}
+      Hits: ${dnsStats.cacheHitsCompleted}
+      Misses: ${dnsStats.cacheMisses}
+    `);
     err(`Current time: ${new Date().toISOString()}`);
   }
 
   protected async baseShutdown(): Promise<void> {
+    const finalDnsStats = dns.getCacheStats();
+    debug("Final DNS Cache Stats:", finalDnsStats);
+
     clearInterval(this.logTimer as NodeJS.Timeout);
   }
 
