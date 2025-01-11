@@ -1,8 +1,12 @@
 /* src/otlp/MonitoredOTLPExporter.ts */
 
-import dns from "dns";
-import { isIP } from "net";
-import os from "os";
+// import dns from "dns";
+// import { isIP } from "net";
+// import os from "os";
+
+import { promises as dnsPromises } from "node:dns"; // Changed
+import { isIP } from "node:net"; // Added node: prefix
+import { hostname, loadavg, totalmem, freemem } from "node:os"; // Changed to specific imports
 import { otlpConfig } from "./otlpConfig";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import type { ExportResult } from "@opentelemetry/core";
@@ -18,21 +22,28 @@ export abstract class MonitoredOTLPExporter<T> {
   protected abstract readonly exporterType: string;
   protected readonly timeoutMillis: number;
 
-  constructor(exporterConfig: OTLPExporterNodeConfigBase, endpoint: string, timeoutMillis: number = 60000) {
+  constructor(
+    exporterConfig: OTLPExporterNodeConfigBase,
+    endpoint: string,
+    timeoutMillis: number = 60000,
+  ) {
     this.url = exporterConfig.url || endpoint;
     this.timeoutMillis = timeoutMillis;
-    debug(`${this.constructor.name} initialized with URL: ${this.url} and timeout: ${this.timeoutMillis}ms`);
+    debug(
+      `${this.constructor.name} initialized with URL: ${this.url} and timeout: ${this.timeoutMillis}ms`,
+    );
 
     this.logIntervalMs = otlpConfig.logIntervalMs;
-    if (typeof this.logIntervalMs !== "number" || Number.isNaN(this.logIntervalMs)) {
+    if (
+      typeof this.logIntervalMs !== "number" ||
+      Number.isNaN(this.logIntervalMs)
+    ) {
       warn(
         `Invalid logIntervalMs: ${this.logIntervalMs}. Using default of 300000ms.`,
       );
       this.logIntervalMs = config.openTelemetry.SUMMARY_LOG_INTERVAL;
     } else {
-      debug(
-        `${this.constructor.name} log interval: ${this.logIntervalMs}ms`,
-      );
+      debug(`${this.constructor.name} log interval: ${this.logIntervalMs}ms`);
     }
 
     this.logTimer = setInterval(() => {
@@ -42,7 +53,9 @@ export abstract class MonitoredOTLPExporter<T> {
 
   private logStatistics(): void {
     const successRate = (this.successfulExports / this.totalExports) * 100 || 0;
-    log(`OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`);
+    log(
+      `OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`,
+    );
   }
 
   protected async checkNetworkConnectivity(): Promise<void> {
@@ -53,7 +66,8 @@ export abstract class MonitoredOTLPExporter<T> {
 
     if (!isIP(host)) {
       try {
-        const addresses = await dns.promises.resolve4(host);
+        // Using dnsPromises instead of dns.promises
+        const addresses = await dnsPromises.resolve4(host);
         debug(`DNS resolution for ${host}: ${addresses.join(", ")}`);
       } catch (error) {
         err(`DNS resolution failed for ${host}:`, error);
@@ -62,9 +76,9 @@ export abstract class MonitoredOTLPExporter<T> {
   }
 
   protected logSystemResources(): void {
-    const cpuUsage = os.loadavg()[0];
-    const totalMemory = os.totalmem();
-    const freeMemory = os.freemem();
+    const cpuUsage = loadavg()[0]; // Using imported loadavg
+    const totalMemory = totalmem(); // Using imported totalmem
+    const freeMemory = freemem(); // Using imported freemem
     const usedMemory = totalMemory - freeMemory;
     const memoryUsage = (usedMemory / totalMemory) * 100;
 
@@ -79,9 +93,7 @@ export abstract class MonitoredOTLPExporter<T> {
     debug(
       `Free System Memory: ${(freeMemory / 1024 / 1024 / 1024).toFixed(2)} GB`,
     );
-    debug(
-      `Process RSS: ${(processMemory.rss / 1024 / 1024).toFixed(2)} MB`,
-    );
+    debug(`Process RSS: ${(processMemory.rss / 1024 / 1024).toFixed(2)} MB`);
     debug(
       `Process Heap Total: ${(processMemory.heapTotal / 1024 / 1024).toFixed(2)} MB`,
     );
@@ -98,9 +110,7 @@ export abstract class MonitoredOTLPExporter<T> {
 
   protected logSuccess(itemCount: number, duration: number): void {
     const itemType = this.getItemType(itemCount);
-    log(
-      `Successfully exported ${itemCount} ${itemType} in ${duration}ms`,
-    );
+    log(`Successfully exported ${itemCount} ${itemType} in ${duration}ms`);
   }
 
   private getItemType(count: number): string {
@@ -145,4 +155,3 @@ export abstract class MonitoredOTLPExporter<T> {
     resultCallback: (result: ExportResult) => void,
   ): Promise<void>;
 }
-
