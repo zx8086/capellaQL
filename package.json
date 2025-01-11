@@ -3,7 +3,7 @@
   "version": "1.0.50",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "NODE_DEBUG=http BUN_CONFIG_VERBOSE_FETCH=true BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=60 bun run --watch src/index.ts",
+    "dev": "NODE_DEBUG=http BUN_CONFIG_VERBOSE_FETCH=true BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=120 bun run --watch src/index.ts",
     "start": "BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=60 bun run src/index.ts",
     "build": "bun build ./src/index.ts --target=node --outdir ./dist",
     "prepublish": "npm run snyk-protect",
@@ -46,7 +46,7 @@
   },
   "overrides": {
     "*/graphql": "^16.9.0",
-    "*/axios": "^1.6.7"
+    "*/axios": "^1.7.8 "
   },
   "devDependencies": {
     "@types/bun": "^1.1.16",
