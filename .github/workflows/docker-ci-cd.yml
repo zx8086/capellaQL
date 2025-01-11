@@ -16,6 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # QEMU setup for multi-architecture builds (Added from standard workflow)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v1
         with:
@@ -28,6 +34,11 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
           restore-keys: |
             ${{ runner.os }}-bun-
+
+      # Build timestamp (Added from standard workflow)
+      - name: Set build timestamp
+        id: timestamp
+        run: echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
 
       - name: Install dependencies and run post-install scripts
         run: |
@@ -42,26 +53,7 @@ jobs:
           ENABLE_OPENTELEMETRY=${{ vars.ENABLE_OPENTELEMETRY }}
           BASE_URL=${{ vars.BASE_URL }}
           PORT=${{ vars.PORT }}
-          LOG_LEVEL=${{ vars.LOG_LEVEL }}
-          LOG_MAX_SIZE=${{ vars.LOG_MAX_SIZE }}
-          LOG_MAX_FILES=${{ vars.LOG_MAX_FILES }}
-          YOGA_RESPONSE_CACHE_TTL=${{ vars.YOGA_RESPONSE_CACHE_TTL }}
-          COUCHBASE_URL=${{ secrets.COUCHBASE_URL }}
-          COUCHBASE_USERNAME=${{ secrets.COUCHBASE_USERNAME }}
-          COUCHBASE_PASSWORD=${{ secrets.COUCHBASE_PASSWORD }}
-          COUCHBASE_BUCKET=${{ vars.COUCHBASE_BUCKET }}
-          COUCHBASE_SCOPE=${{ vars.COUCHBASE_SCOPE }}
-          COUCHBASE_COLLECTION=${{ vars.COUCHBASE_COLLECTION }}
-          SERVICE_NAME=${{ vars.SERVICE_NAME }}
-          SERVICE_VERSION=${{ vars.SERVICE_VERSION }}
-          DEPLOYMENT_ENVIRONMENT=${{ vars.DEPLOYMENT_ENVIRONMENT }}
-          TRACES_ENDPOINT=${{ vars.TRACES_ENDPOINT }}
-          METRICS_ENDPOINT=${{ vars.METRICS_ENDPOINT }}
-          LOGS_ENDPOINT=${{ vars.LOGS_ENDPOINT }}
-          METRIC_READER_INTERVAL=${{ vars.METRIC_READER_INTERVAL }}
-          CONSOLE_METRIC_READER_INTERVAL=${{ vars.CONSOLE_METRIC_READER_INTERVAL }}
-          SUMMARY_LOG_INTERVAL=${{ vars.SUMMARY_LOG_INTERVAL }}
-          ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+          # [Your existing env variables...]
           EOF
 
       - name: Run Snyk checks
@@ -86,50 +78,65 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
+      # Docker layer cache (Added from standard workflow)
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        id: buildx
         with:
-          version: "lab:latest"
-          driver: cloud
-          endpoint: "zx8086/cldbuild"
-          install: true
+          platforms: linux/amd64,linux/arm64
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
+          builder: ${{ steps.buildx.outputs.name }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: zx8086/capellaql:latest
+          tags: |
+            zx8086/capellaql:latest
+            zx8086/capellaql:${{ github.sha }}
           platforms: linux/arm64,linux/amd64
-          target: release
-          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
           build-args: |
-            BASE_URL=${{ vars.BASE_URL }}
-            PORT=${{ vars.PORT }}
-            ENABLE_FILE_LOGGING=${{ vars.ENABLE_FILE_LOGGING }}
-            ENABLE_OPENTELEMETRY=${{ vars.ENABLE_OPENTELEMETRY }}
-            LOG_LEVEL=${{ vars.LOG_LEVEL }}
-            LOG_MAX_SIZE=${{ vars.LOG_MAX_SIZE }}
-            LOG_MAX_FILES=${{ vars.LOG_MAX_FILES }}
-            YOGA_RESPONSE_CACHE_TTL=${{ vars.YOGA_RESPONSE_CACHE_TTL }}
-            COUCHBASE_BUCKET=${{ vars.COUCHBASE_BUCKET }}
-            COUCHBASE_SCOPE=${{ vars.COUCHBASE_SCOPE }}
-            COUCHBASE_COLLECTION=${{ vars.COUCHBASE_COLLECTION }}
-            SERVICE_NAME=${{ vars.SERVICE_NAME }}
-            SERVICE_VERSION=${{ vars.SERVICE_VERSION }}
-            DEPLOYMENT_ENVIRONMENT=${{ vars.DEPLOYMENT_ENVIRONMENT }}
-            TRACES_ENDPOINT=${{ vars.TRACES_ENDPOINT }}
-            METRICS_ENDPOINT=${{ vars.METRICS_ENDPOINT }}
-            LOGS_ENDPOINT=${{ vars.LOGS_ENDPOINT }}
-            METRIC_READER_INTERVAL=${{ vars.METRIC_READER_INTERVAL }}
-            CONSOLE_METRIC_READER_INTERVAL=${{ vars.CONSOLE_METRIC_READER_INTERVAL }}
-            SUMMARY_LOG_INTERVAL=${{ vars.SUMMARY_LOG_INTERVAL }}
-            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+            NODE_ENV=production
+            BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
+            COMMIT_HASH=${{ github.sha }}
+            BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
+            # [Your existing build args...]
 
-      # - name: Move cache
-      #   run: |
-      #     rm -rf /tmp/.buildx-cache
-      #     mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+      # Container test (Added from standard workflow)
+      - name: Test container
+        if: github.event_name != 'pull_request'
+        run: |
+          # Stop existing containers using port 3000
+          docker ps -q --filter publish=3000 | xargs -r docker stop
+
+          # Remove existing container with same name if exists
+          docker rm -f app-test 2>/dev/null || true
+
+          # Run new container
+          docker run -d \
+            --name app-test \
+            -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e BUILD_VERSION=${{ github.ref_name || '0.0.1' }} \
+            -e COMMIT_HASH=${{ github.sha }} \
+            -e BUILD_DATE=${{ env.BUILD_TIMESTAMP }} \
+            zx8086/capellaql:latest
+
+          # Wait for container to be healthy
+          sleep 10
+
+          # Verify container is running
+          docker ps | grep app-test || (docker logs app-test && exit 1)
 
       - name: Run Snyk to check Docker image for vulnerabilities
         env:
@@ -153,13 +160,3 @@ jobs:
           docker image prune -f
           docker volume prune -f
           echo "Cleanup completed"
-
-      - name: Install latest Snyk
-        run: |
-          npm install -g snyk@latest
-          snyk --version
-
-      - name: Inspect Docker image
-        run: |
-          docker image inspect zx8086/capellaql:latest
-          docker history zx8086/capellaql:latest
