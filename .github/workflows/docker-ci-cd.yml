@@ -9,12 +9,25 @@ on:
 permissions:
   contents: read
   security-events: write
+  packages: write
 
 jobs:
   build-and-deploy:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+
+      # Add Docker metadata
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: zx8086/capellaql
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=tag
 
       # QEMU setup for multi-architecture builds (Added from standard workflow)
       - name: Set up QEMU
@@ -119,12 +132,12 @@ jobs:
           context: .
           builder: ${{ steps.buildx.outputs.name }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            zx8086/capellaql:latest
-            zx8086/capellaql:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/arm64,linux/amd64
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          load: true
           build-args: |
             NODE_ENV=production
             BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
@@ -184,12 +197,26 @@ jobs:
           docker image inspect zx8086/capellaql:latest
           docker history zx8086/capellaql:latest
 
-      - name: Run Snyk to check Docker image for vulnerabilities
+      - name: Run Snyk container scan
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          snyk container test zx8086/capellaql:latest --severity-threshold=high --sarif-file-output=snyk-docker.sarif --debug || true
-          snyk container monitor zx8086/capellaql:latest || true
+          # Ensure image is available locally
+          docker images
+
+          # Run Snyk container test
+          snyk container test zx8086/capellaql:latest \
+            --file=Dockerfile \
+            --severity-threshold=high \
+            --sarif-file-output=snyk-docker.sarif \
+            --platform=linux/arm64 || true
+
+          # Monitor the image if on main branch
+          if [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+            snyk container monitor zx8086/capellaql:latest \
+              --file=Dockerfile \
+              --platform=linux/arm64 || true
+          fi
 
       - name: Upload Docker Snyk scan results to GitHub Code Scanning
         if: always() && hashFiles('snyk-docker.sarif') != ''

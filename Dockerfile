@@ -3,20 +3,25 @@
 # Use a more lightweight base image
 FROM oven/bun:slim AS base
 
+LABEL maintainer="Simon Owusu simonowusupvh@gmail.com"
+LABEL description="CapellaQL GraphQL Service"
+LABEL version="1.0.0"
+LABEL org.opencontainers.image.source="https://github.com/zx8086/capellaQL"
 # Set common environment variables
 ENV CN_ROOT=/usr/src/app \
     CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
 
 WORKDIR /usr/src/app
 
-# Create necessary directories
-RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache
+# Create necessary directories with proper permissions
+RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache && \
+    chown -R bun:bun /usr/src/app
 
 # Install dependencies stage
 FROM base AS deps
 
-# Copy only package.json and lockfile
-COPY package.json bun.lockb ./
+# Copy package files
+COPY --chown=bun:bun package.json bun.lockb ./
 
 # Install dependencies
 RUN --mount=type=cache,target=/root/.bun \
@@ -30,11 +35,13 @@ CMD ["bun", "run", "dev"]
 
 # Final release stage
 FROM deps AS release
+
+# Set production environment
 ENV NODE_ENV=production \
     ENABLE_OPENTELEMETRY=true
 
-# Copy all source files
-COPY . .
+# Copy source files with proper ownership
+COPY --chown=bun:bun . .
 
 # Set runtime environment variables
 ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
@@ -48,7 +55,15 @@ ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app
 
-# Run the application
+# Switch to non-root user early
 USER bun
+
 EXPOSE 4000/tcp
+
+# Add curl for healthcheck
+RUN apk add --no-cache curl
+
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:4000/health || exit 1
+
 CMD ["bun", "run", "start"]
