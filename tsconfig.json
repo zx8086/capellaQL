@@ -11,13 +11,18 @@
 
     // Bundler mode
     "moduleResolution": "node",
-    "allowImportingTsExtensions": true,
+    // "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
-    "noEmit": true,
+    "noEmit": false,
     "noImplicitAny": false,
 
     // Best practices
     "strict": true,
+    "sourceMap": true,
+    "inlineSourceMap": false,
+    "inlineSources": true,
+    "declarationMap": true, // If you're generating declaration files
+    "sourceRoot": "/", // Help debuggers locate source files
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,

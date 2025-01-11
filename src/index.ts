@@ -17,9 +17,10 @@ import {
   recordHttpResponseTime,
 } from "./instrumentation";
 import { ulid } from "ulid";
-import { isIP } from 'net';
+import { isIP } from "net";
 import { context as otelContext, trace } from "@opentelemetry/api";
 import { SpanStatusCode } from "@opentelemetry/api";
+import "source-map-support/register";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,20 +56,20 @@ const YOGA_RESPONSE_CACHE_TTL = config.application["YOGA_RESPONSE_CACHE_TTL"];
 const IS_DEVELOPMENT =
   config.openTelemetry.DEPLOYMENT_ENVIRONMENT === "development";
 
-
 const RATE_LIMIT = 500;
 const RATE_LIMIT_WINDOW = 60 * 1000;
 
 const rateLimitStore = new Map<string, { count: number; timestamp: number }>();
 
 function getRateLimitKey(request: Request): string {
-  const clientIp = request.headers.get("x-forwarded-for") || 
-                   request.headers.get("cf-connecting-ip") || 
-                   "unknown";
-  
+  const clientIp =
+    request.headers.get("x-forwarded-for") ||
+    request.headers.get("cf-connecting-ip") ||
+    "unknown";
+
   const url = new URL(request.url);
   const path = url.pathname;
-  
+
   return `${clientIp}:${path}`;
 }
 
@@ -132,14 +133,22 @@ const createYogaOptions = () => ({
       onParse: ({ params }) => {
         const span = trace.getActiveSpan();
         if (span) {
-          span.setAttribute('graphql.operation_name', params.operationName || 'Unknown');
-          span.setAttribute('graphql.query', params.source);
+          span.setAttribute(
+            "graphql.operation_name",
+            params.operationName || "Unknown",
+          );
+          span.setAttribute("graphql.query", params.source);
         }
       },
       onValidate: ({ document }) => {
         const span = trace.getActiveSpan();
         if (span) {
-          span.setAttribute('graphql.operation_name', document.definitions[0]?.kind === 'OperationDefinition' ? document.definitions[0].name?.value || 'Unknown' : 'Unknown');
+          span.setAttribute(
+            "graphql.operation_name",
+            document.definitions[0]?.kind === "OperationDefinition"
+              ? document.definitions[0].name?.value || "Unknown"
+              : "Unknown",
+          );
         }
       },
     },
@@ -166,7 +175,7 @@ const healthCheck = new Elysia().get("/health", async () => {
 const getClientIp = (request: Request): string => {
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
-    const ips = forwardedFor.split(',').map(ip => ip.trim());
+    const ips = forwardedFor.split(",").map((ip) => ip.trim());
     for (const ip of ips) {
       if (isIP(ip)) return ip;
     }
@@ -174,18 +183,18 @@ const getClientIp = (request: Request): string => {
   const otherIps = [
     request.headers.get("cf-connecting-ip"),
     request.headers.get("x-real-ip"),
-    request.headers.get("x-client-ip")
+    request.headers.get("x-client-ip"),
   ];
   for (const ip of otherIps) {
     if (ip && isIP(ip)) return ip;
   }
-  
+
   // Log all headers for debugging
   console.log("All headers:", Object.fromEntries(request.headers.entries()));
-  
+
   // Log the entire request object (be cautious with sensitive data)
   console.log("Request object:", JSON.stringify(request, null, 2));
-  
+
   const remoteAddress = (request as any).socket?.remoteAddress;
   if (remoteAddress && isIP(remoteAddress)) return remoteAddress;
 
@@ -199,7 +208,7 @@ const app = new Elysia()
   })
   .use(
     cors({
-      origin: ['*'],
+      origin: ["*"],
       methods: ["GET", "POST", "OPTIONS"],
       allowedHeaders: ["Content-Type"],
     }),
@@ -207,10 +216,16 @@ const app = new Elysia()
   .use(healthCheck)
   .use(yoga(createYogaOptions()))
   .options("*", ({ set, request }) => {
-    log('Handling OPTIONS request');
-    log('Origin:', request.headers.get('origin'));
-    log('Access-Control-Request-Method:', request.headers.get('access-control-request-method'));
-    log('Access-Control-Request-Headers:', request.headers.get('access-control-request-headers'));
+    log("Handling OPTIONS request");
+    log("Origin:", request.headers.get("origin"));
+    log(
+      "Access-Control-Request-Method:",
+      request.headers.get("access-control-request-method"),
+    );
+    log(
+      "Access-Control-Request-Headers:",
+      request.headers.get("access-control-request-headers"),
+    );
 
     set.headers["Access-Control-Allow-Origin"] = "*";
     set.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
@@ -220,16 +235,22 @@ const app = new Elysia()
   })
   .onRequest(async (context) => {
     context.set.headers["Access-Control-Allow-Origin"] = "*";
-    log('Incoming request');
-    log('Method:', context.request.method);
-    log('Origin:', context.request.headers.get('origin'));
-    log('Access-Control-Request-Method:', context.request.headers.get('access-control-request-method'));
-    log('Access-Control-Request-Headers:', context.request.headers.get('access-control-request-headers'));
+    log("Incoming request");
+    log("Method:", context.request.method);
+    log("Origin:", context.request.headers.get("origin"));
+    log(
+      "Access-Control-Request-Method:",
+      context.request.headers.get("access-control-request-method"),
+    );
+    log(
+      "Access-Control-Request-Headers:",
+      context.request.headers.get("access-control-request-headers"),
+    );
     if (checkRateLimit(context.request)) {
       context.set.status = 429;
       return { error: "Too Many Requests" };
     }
-    const tracer = trace.getTracer('elysia-app');
+    const tracer = trace.getTracer("elysia-app");
     return tracer.startActiveSpan(getSpanName(context), async (span) => {
       try {
         const requestId = ulid();
@@ -255,12 +276,14 @@ const app = new Elysia()
         }
 
         // Set CSP header
-        context.set.headers["Content-Security-Policy"] = cspDirectives.join("; ");
+        context.set.headers["Content-Security-Policy"] =
+          cspDirectives.join("; ");
 
         context.set.headers["X-XSS-Protection"] = "1; mode=block";
         context.set.headers["X-Frame-Options"] = "SAMEORIGIN";
         context.set.headers["X-Content-Type-Options"] = "nosniff";
-        context.set.headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        context.set.headers["Referrer-Policy"] =
+          "strict-origin-when-cross-origin";
 
         const startTime = Date.now();
         context.store = { startTime };
@@ -273,9 +296,9 @@ const app = new Elysia()
         const span = trace.getSpan(ctx);
         if (span) {
           span.setAttributes({
-            'http.request_id': requestId,
-            'http.method': context.request.method,
-            'http.url': context.request.url,
+            "http.request_id": requestId,
+            "http.method": context.request.method,
+            "http.url": context.request.url,
           });
         }
 
@@ -288,26 +311,37 @@ const app = new Elysia()
           clientIp,
         });
 
-        if (context.request.url.includes('/graphql')) {
+        if (context.request.url.includes("/graphql")) {
           const clonedRequest = context.request.clone();
           const text = await clonedRequest.text();
           if (text) {
-            const body = JSON.parse(text) as { query?: string, operationName?: string, variables?: Record<string, unknown> } | undefined;
-            if (body && typeof body === 'object') {
+            const body = JSON.parse(text) as
+              | {
+                  query?: string;
+                  operationName?: string;
+                  variables?: Record<string, unknown>;
+                }
+              | undefined;
+            if (body && typeof body === "object") {
               if (body.operationName) {
                 span?.updateName(`GraphQL: ${body.operationName}`);
-                span?.setAttribute('graphql.operation_name', body.operationName);
+                span?.setAttribute(
+                  "graphql.operation_name",
+                  body.operationName,
+                );
               }
               if (body.query) {
-                span?.setAttribute('graphql.query', body.query);
+                span?.setAttribute("graphql.query", body.query);
               }
               if (body.variables) {
-                span?.setAttribute('graphql.variables', JSON.stringify(body.variables));
+                span?.setAttribute(
+                  "graphql.variables",
+                  JSON.stringify(body.variables),
+                );
               }
             }
           }
         }
-
       } catch (error) {
         err("Error in onRequest handler", error);
         span.recordException(error as Error);
@@ -333,7 +367,6 @@ const app = new Elysia()
     });
   });
 
-  
 const server = app.listen(SERVER_PORT);
 log(`GraphQL server running on port:${SERVER_PORT}`);
 
@@ -359,10 +392,10 @@ function getSpanName(context: any): string {
   const url = new URL(context.request.url);
   const path = url.pathname;
 
-  if (path === '/health') {
+  if (path === "/health") {
     return `${method} /health`;
-  } else if (path === '/graphql') {
-    return 'GraphQL Request';
+  } else if (path === "/graphql") {
+    return "GraphQL Request";
   } else {
     return `${method} ${path}`;
   }
