@@ -46,7 +46,9 @@
   },
   "overrides": {
     "*/graphql": "^16.9.0",
-    "*/axios": "^1.7.8 "
+    "*/axios": "1.7.8",
+    "couchbase/cmake-js/axios": "^1.7.8",
+    "**/axios": "^1.7.8"
   },
   "devDependencies": {
     "@types/bun": "^1.1.16",
