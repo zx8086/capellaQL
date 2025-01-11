@@ -1,12 +1,8 @@
 /* src/otlp/MonitoredOTLPExporter.ts */
 
-// import dns from "dns";
-// import { isIP } from "net";
-// import os from "os";
-
-import { promises as dnsPromises } from "node:dns"; // Changed
-import { isIP } from "node:net"; // Added node: prefix
-import { hostname, loadavg, totalmem, freemem } from "node:os"; // Changed to specific imports
+import { promises as dnsPromises } from "node:dns";
+import { isIP } from "node:net";
+import { hostname, loadavg, totalmem, freemem } from "node:os";
 import { otlpConfig } from "./otlpConfig";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import type { ExportResult } from "@opentelemetry/core";
@@ -52,9 +48,10 @@ export abstract class MonitoredOTLPExporter<T> {
   }
 
   private logStatistics(): void {
+    const hostName = hostname();
     const successRate = (this.successfulExports / this.totalExports) * 100 || 0;
     log(
-      `OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`,
+      `[Host: ${hostName}] OpenTelemetry ${this.exporterType} Export Statistics: Total Exports: ${this.totalExports}, Successful Exports: ${this.successfulExports}, Success Rate: ${successRate.toFixed(2)}%`,
     );
   }
 
@@ -66,7 +63,6 @@ export abstract class MonitoredOTLPExporter<T> {
 
     if (!isIP(host)) {
       try {
-        // Using dnsPromises instead of dns.promises
         const addresses = await dnsPromises.resolve4(host);
         debug(`DNS resolution for ${host}: ${addresses.join(", ")}`);
       } catch (error) {
@@ -76,15 +72,17 @@ export abstract class MonitoredOTLPExporter<T> {
   }
 
   protected logSystemResources(): void {
-    const cpuUsage = loadavg()[0]; // Using imported loadavg
-    const totalMemory = totalmem(); // Using imported totalmem
-    const freeMemory = freemem(); // Using imported freemem
+    const hostName = hostname();
+    const cpuUsage = loadavg()[0];
+    const totalMemory = totalmem();
+    const freeMemory = freemem();
     const usedMemory = totalMemory - freeMemory;
     const memoryUsage = (usedMemory / totalMemory) * 100;
 
     const processMemory = process.memoryUsage();
     const processCpuUsage = process.cpuUsage();
 
+    debug(`Host: ${hostName}`);
     debug(`System CPU Usage (1m average): ${cpuUsage.toFixed(2)}`);
     debug(`System Memory Usage: ${memoryUsage.toFixed(2)}%`);
     debug(
