@@ -130,7 +130,28 @@ jobs:
             BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
             COMMIT_HASH=${{ github.sha }}
             BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
-            # [Your existing build args...]
+            BASE_URL=${{ vars.BASE_URL }}
+            PORT=${{ vars.PORT }}
+            ENABLE_FILE_LOGGING=${{ vars.ENABLE_FILE_LOGGING }}
+            ENABLE_OPENTELEMETRY=${{ vars.ENABLE_OPENTELEMETRY }}
+            LOG_LEVEL=${{ vars.LOG_LEVEL }}
+            LOG_MAX_SIZE=${{ vars.LOG_MAX_SIZE }}
+            LOG_MAX_FILES=${{ vars.LOG_MAX_FILES }}
+            YOGA_RESPONSE_CACHE_TTL=${{ vars.YOGA_RESPONSE_CACHE_TTL }}
+            COUCHBASE_BUCKET=${{ vars.COUCHBASE_BUCKET }}
+            COUCHBASE_SCOPE=${{ vars.COUCHBASE_SCOPE }}
+            COUCHBASE_COLLECTION=${{ vars.COUCHBASE_COLLECTION }}
+            SERVICE_NAME=${{ vars.SERVICE_NAME }}
+            SERVICE_VERSION=${{ vars.SERVICE_VERSION }}
+            DEPLOYMENT_ENVIRONMENT=${{ vars.DEPLOYMENT_ENVIRONMENT }}
+            TRACES_ENDPOINT=${{ vars.TRACES_ENDPOINT }}
+            METRICS_ENDPOINT=${{ vars.METRICS_ENDPOINT }}
+            LOGS_ENDPOINT=${{ vars.LOGS_ENDPOINT }}
+            METRIC_READER_INTERVAL=${{ vars.METRIC_READER_INTERVAL }}
+            CONSOLE_METRIC_READER_INTERVAL=${{ vars.CONSOLE_METRIC_READER_INTERVAL }}
+            SUMMARY_LOG_INTERVAL=${{ vars.SUMMARY_LOG_INTERVAL }}
+            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+            BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=${{ vars.BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS }}
 
       # Container test (Added from standard workflow)
       - name: Test container
@@ -157,6 +178,11 @@ jobs:
 
           # Verify container is running
           docker ps | grep app-test || (docker logs app-test && exit 1)
+
+      - name: Inspect Docker image
+        run: |
+          docker image inspect zx8086/capellaql:latest
+          docker history zx8086/capellaql:latest
 
       - name: Run Snyk to check Docker image for vulnerabilities
         env:

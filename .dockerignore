@@ -30,6 +30,8 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+docker.env
+
 
 # Version control
 .git
@@ -69,3 +71,4 @@ logs
 
 # k6
 /test
+k6
