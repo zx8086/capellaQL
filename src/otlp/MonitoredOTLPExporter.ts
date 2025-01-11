@@ -3,12 +3,28 @@
 import { promises as dnsPromises } from "node:dns";
 import { isIP } from "node:net";
 import { loadavg, totalmem, freemem, hostname } from "node:os";
-import { dns } from "bun";
-import { otlpConfig } from "./otlpConfig";
 import type { OTLPExporterNodeConfigBase } from "@opentelemetry/otlp-exporter-base";
 import type { ExportResult } from "@opentelemetry/core";
 import config from "../config";
 import { log, warn, err, debug } from "$utils/simpleLogger";
+import { otlpConfig } from "./otlpConfig";
+
+// Import Bun DNS with type checking
+let bunDns;
+try {
+  bunDns = require("bun").dns;
+} catch {
+  bunDns = {
+    getCacheStats: () => ({
+      size: 0,
+      cacheHitsCompleted: 0,
+      cacheMisses: 0,
+      totalCount: 0,
+      cacheHitsInflight: 0,
+    }),
+    prefetch: () => {},
+  };
+}
 
 export abstract class MonitoredOTLPExporter<T> {
   private logTimer: any;
@@ -64,10 +80,10 @@ export abstract class MonitoredOTLPExporter<T> {
 
   private async initializeDNSPrefetch(): Promise<void> {
     try {
-      const initialStats = dns.getCacheStats();
+      const initialStats = bunDns.getCacheStats();
       debug("Initial DNS cache stats:", initialStats);
 
-      dns.prefetch(this.hostName);
+      bunDns.prefetch(this.hostName);
       this.dnsPrefetchInitiated = true;
       debug(`DNS prefetch initiated for ${this.hostName} (port ${this.port})`);
 
@@ -79,11 +95,11 @@ export abstract class MonitoredOTLPExporter<T> {
 
   private async verifyDNSPrefetch(): Promise<void> {
     try {
-      const beforeStats = dns.getCacheStats();
+      const beforeStats = bunDns.getCacheStats();
       const addresses = await dnsPromises.resolve4(this.hostName, {
         ttl: true,
       });
-      const afterStats = dns.getCacheStats();
+      const afterStats = bunDns.getCacheStats();
 
       const cacheEffective =
         afterStats.cacheHitsCompleted > beforeStats.cacheHitsCompleted;
@@ -102,7 +118,7 @@ export abstract class MonitoredOTLPExporter<T> {
   private logStatistics(): void {
     const machineName = hostname();
     const successRate = (this.successfulExports / this.totalExports) * 100 || 0;
-    const dnsStats = dns.getCacheStats();
+    const dnsStats = bunDns.getCacheStats();
 
     log(
       `[Host: ${machineName}] OpenTelemetry ${this.exporterType} Export Statistics:
@@ -122,7 +138,7 @@ export abstract class MonitoredOTLPExporter<T> {
 
     if (!isIP(this.hostName)) {
       try {
-        const beforeStats = dns.getCacheStats();
+        const beforeStats = bunDns.getCacheStats();
         debug(`DNS cache stats before resolve:`, beforeStats);
 
         const addresses = await dnsPromises.resolve4(this.hostName, {
@@ -138,7 +154,7 @@ export abstract class MonitoredOTLPExporter<T> {
             .join(", ")}`,
         );
 
-        const afterStats = dns.getCacheStats();
+        const afterStats = bunDns.getCacheStats();
         debug(`DNS cache stats after resolve:`, afterStats);
 
         const hitRate =
@@ -159,7 +175,7 @@ export abstract class MonitoredOTLPExporter<T> {
 
   protected logSystemResources(): void {
     const machineName = hostname();
-    const dnsStats = dns.getCacheStats();
+    const dnsStats = bunDns.getCacheStats();
     const cpuUsage = loadavg()[0];
     const totalMemory = totalmem();
     const freeMemory = freemem();

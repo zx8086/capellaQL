@@ -31,7 +31,8 @@ RUN --mount=type=cache,target=/root/.bun \
 # Development stage
 FROM deps AS development
 ENV NODE_ENV=development
-COPY . .
+COPY --chown=bun:bun . .
+RUN bun install
 CMD ["bun", "run", "dev"]
 
 # Final release stage
@@ -44,8 +45,16 @@ ENV NODE_ENV=production \
 # Copy source files with proper ownership
 COPY --chown=bun:bun . .
 
+# Install dependencies again to ensure they're available for the build
+RUN bun install --production
+
 # Add build step to generate source maps
-RUN bun build ./src/index.ts --target=node --outdir ./dist --sourcemap && \
+RUN bun build ./src/index.ts \
+    --target=node \
+    --outdir ./dist \
+    --sourcemap \
+    --external dns \
+    --external bun && \
     mkdir -p /usr/src/app/dist/maps && \
     mv /usr/src/app/dist/*.map /usr/src/app/dist/maps/
 
