@@ -87,6 +87,7 @@ RUN chown -R bun:bun /usr/src/app
 # Switch back to non-root user
 USER bun
 
+# Expose GraphQL Port
 EXPOSE 4000/tcp
 
 CMD ["bun", "run", "start"]
