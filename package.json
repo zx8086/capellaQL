@@ -1,6 +1,6 @@
 {
   "name": "capellaql",
-  "version": "1.0.50",
+  "version": "2.0.0",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "NODE_DEBUG=http BUN_CONFIG_VERBOSE_FETCH=true BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=120 bun run --watch src/index.ts",

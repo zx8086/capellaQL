@@ -3,10 +3,23 @@
 # Use a more lightweight base image
 FROM oven/bun:canary-alpine AS base
 
-LABEL maintainer="Simon Owusu simonowusupvh@gmail.com"
-LABEL description="CapellaQL GraphQL Service"
-LABEL version="2.0.0"
+# Standardized OCI labels
+LABEL org.opencontainers.image.title="capellaql"
+LABEL org.opencontainers.image.description="CapellaQL GraphQL Service"
+LABEL org.opencontainers.image.version="2.0.0"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.authors="Simon Owusu <simonowusupvh@gmail.com>"
+LABEL org.opencontainers.image.vendor="zx8086"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.url="https://github.com/zx8086/capellaql"
 LABEL org.opencontainers.image.source="https://github.com/zx8086/capellaql"
+LABEL org.opencontainers.image.documentation="https://github.com/zx8086/capellaql/README.md"
+LABEL org.opencontainers.image.base.name="oven/bun:canary-alpine"
+
+# Custom labels (if needed)
+LABEL com.capellaql.maintainer="Simon Owusu <simonowusupvh@gmail.com>"
+LABEL com.capellaql.release-date="${BUILD_DATE}"
+LABEL com.capellaql.version.is-production="true"
 
 # Set common environment variables
 ENV CN_ROOT=/usr/src/app \
