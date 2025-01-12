@@ -225,7 +225,6 @@ jobs:
           docker run -d \
             --name app-test \
             -p 4000:4000 \
-            --env-file .env \
             -e NODE_ENV=production \
             -e BUILD_VERSION=${{ github.ref_name || '0.0.1' }} \
             -e COMMIT_HASH=${{ github.sha }} \
