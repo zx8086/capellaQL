@@ -3,11 +3,17 @@
 # Use a more lightweight base image
 FROM oven/bun:canary-alpine AS base
 
+ARG BUILD_DATE
+ARG BUILD_VERSION
+ARG COMMIT_HASH
+
 # Standardized OCI labels
 LABEL org.opencontainers.image.title="capellaql"
 LABEL org.opencontainers.image.description="CapellaQL GraphQL Service"
 LABEL org.opencontainers.image.version="2.0.0"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.version="${BUILD_VERSION}"
+LABEL org.opencontainers.image.revision="${COMMIT_HASH}"
 LABEL org.opencontainers.image.authors="Simon Owusu <simonowusupvh@gmail.com>"
 LABEL org.opencontainers.image.vendor="zx8086"
 LABEL org.opencontainers.image.licenses="MIT"

@@ -153,9 +153,9 @@ jobs:
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
           build-args: |
             NODE_ENV=production
+            BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
             BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
             COMMIT_HASH=${{ github.sha }}
-            BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
             BASE_URL=${{ vars.BASE_URL }}
             PORT=${{ vars.PORT }}
             ENABLE_FILE_LOGGING=${{ vars.ENABLE_FILE_LOGGING }}
