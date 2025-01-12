@@ -379,11 +379,19 @@ jobs:
 
           # Build Status and Timing
           echo "#### ⚙️ Build Statistics" >> $GITHUB_STEP_SUMMARY
+          BUILD_START_TIME=$(date -d "${{ env.BUILD_TIMESTAMP }}" +%s)
+          BUILD_END_TIME=$(date +%s)
+          BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
+
+          echo "- ⏱️ Total Duration: ${BUILD_DURATION}s" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Start Time: ${{ env.BUILD_TIMESTAMP }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏁 End Time: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_STEP_SUMMARY
+
           if [ -f "buildx.log" ]; then
             BUILD_DURATION=$(grep "duration:" buildx.log | awk '{print $2}')
             CACHE_HITS=$(grep "cache hits:" buildx.log | awk '{print $3}')
-            echo "- ⏱️ Duration: ${BUILD_DURATION:-N/A}" >> $GITHUB_STEP_SUMMARY
             echo "- 🎯 Cache Hits: ${CACHE_HITS:-0}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🏗️ Build Duration: ${BUILD_DURATION:-N/A}" >> $GITHUB_STEP_SUMMARY
           fi
 
           # Container Status
