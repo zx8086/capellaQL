@@ -2,11 +2,10 @@
 
 # Use a more lightweight base image
 FROM oven/bun:canary-alpine AS base
-# oven/bun:canary-alpine
 
 LABEL maintainer="Simon Owusu simonowusupvh@gmail.com"
 LABEL description="CapellaQL GraphQL Service"
-LABEL version="1.0.0"
+LABEL version="2.0.0"
 LABEL org.opencontainers.image.source="https://github.com/zx8086/capellaQL"
 
 # Set common environment variables

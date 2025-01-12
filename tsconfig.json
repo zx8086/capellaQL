@@ -1,26 +1,26 @@
 {
   "compilerOptions": {
     // Enable latest features
-    "lib": ["ESNext"],
+    "lib": ["ESNext"], // Keep only actual TypeScript libraries here
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
-    "typeRoots": ["./node_modules/@types", "./src"],
+    "typeRoots": ["./node_modules/@types", "./src/types"], // Add a types directory
 
     // Bundler mode
-    "moduleResolution": "node",
+    "moduleResolution": "bundler", // Changed from "node" to "bundler"
     "verbatimModuleSyntax": true,
     "noEmit": false,
     "noImplicitAny": false,
 
     // Source Map Configuration
-    "sourceMap": true, // Enable source map generation
-    "inlineSources": true, // Include source code in source maps
-    "sourceRoot": "/", // Help debuggers locate source files
-    "declaration": true, // Generate .d.ts files
-    "declarationMap": true, // Generate source maps for .d.ts files
+    "sourceMap": true,
+    "inlineSources": true,
+    "sourceRoot": "/",
+    "declaration": true,
+    "declarationMap": true,
 
     // Best practices
     "strict": true,
@@ -33,15 +33,15 @@
     "rootDir": "./src",
     "baseUrl": ".",
 
-    // Path aliases
+    // Path aliases - updated with index files
     "paths": {
-      "$lib": ["src/lib"],
-      "$config": ["src/config.ts"],
+      "$lib": ["src/lib/index"],
       "$lib/*": ["src/lib/*"],
-      "$utils": ["src/utils"],
+      "$utils": ["src/utils/index"],
       "$utils/*": ["src/utils/*"],
-      "$models": ["src/models"],
-      "$models/*": ["src/models/*"]
+      "$models": ["src/models/index"],
+      "$models/*": ["src/models/*"],
+      "$config": ["src/config"]
     },
 
     // Some stricter flags
