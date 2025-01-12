@@ -290,58 +290,101 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Build Information
-          echo "#### Build Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "#### 🔨 Build Configuration" >> $GITHUB_STEP_SUMMARY
           echo "- 🔧 Platforms: linux/arm64, linux/amd64" >> $GITHUB_STEP_SUMMARY
           echo "- 📦 Builder: ${{ steps.buildx.outputs.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Push Enabled: ${{ github.event_name != 'pull_request' }}" >> $GITHUB_STEP_SUMMARY
           echo "- 🏷️ Tags:" >> $GITHUB_STEP_SUMMARY
-          echo "  - zx8086/capellaql:latest" >> $GITHUB_STEP_SUMMARY
-          echo "  - zx8086/capellaql:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          for tag in $(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' '); do
+            echo "  - ${tag}" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Environment Information
+          echo "#### 🌍 Environment Details" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔰 Node Environment: production" >> $GITHUB_STEP_SUMMARY
+          echo "- 📍 Deployment Environment: ${{ vars.DEPLOYMENT_ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 Base URL: ${{ vars.BASE_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚪 Port: ${{ vars.PORT }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Build Args
-          echo "#### Build Arguments" >> $GITHUB_STEP_SUMMARY
-          echo "- NODE_ENV: production" >> $GITHUB_STEP_SUMMARY
-          echo "- BUILD_VERSION: ${{ github.ref_name || '0.0.1' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- COMMIT_HASH: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- BUILD_DATE: ${{ env.BUILD_TIMESTAMP }}" >> $GITHUB_STEP_SUMMARY
+          echo "#### 🏗️ Build Arguments" >> $GITHUB_STEP_SUMMARY
+          echo "- 📋 Build Version: ${{ github.ref_name || '0.0.1' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Commit Hash: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 Build Date: ${{ env.BUILD_TIMESTAMP }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📝 Source Maps: Enabled" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Cache Information
-          echo "#### Cache Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- 💾 Cache From: type=registry,ref=zx8086/capellaql:buildcache" >> $GITHUB_STEP_SUMMARY
-          echo "- 💾 Cache To: type=registry,ref=zx8086/capellaql:buildcache,mode=max" >> $GITHUB_STEP_SUMMARY
+          echo "#### 💾 Cache Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- 📥 Cache From: type=registry,ref=zx8086/capellaql:buildcache" >> $GITHUB_STEP_SUMMARY
+          echo "- 📤 Cache To: type=registry,ref=zx8086/capellaql:buildcache,mode=max" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Build Status and Timing
+          echo "#### ⚙️ Build Statistics" >> $GITHUB_STEP_SUMMARY
           if [ -f "buildx.log" ]; then
             BUILD_DURATION=$(grep "duration:" buildx.log | awk '{print $2}')
             CACHE_HITS=$(grep "cache hits:" buildx.log | awk '{print $3}')
-            echo "#### Build Statistics" >> $GITHUB_STEP_SUMMARY
             echo "- ⏱️ Duration: ${BUILD_DURATION:-N/A}" >> $GITHUB_STEP_SUMMARY
             echo "- 🎯 Cache Hits: ${CACHE_HITS:-0}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Container Status
+          echo "#### 🐳 Container Status" >> $GITHUB_STEP_SUMMARY
+          if docker ps | grep app-test >/dev/null 2>&1; then
+            CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' app-test)
+            CONTAINER_HEALTH=$(docker inspect --format='{{.State.Health.Status}}' app-test 2>/dev/null || echo "N/A")
+            CONTAINER_STARTED=$(docker inspect --format='{{.State.StartedAt}}' app-test)
+            echo "- ✅ Status: ${CONTAINER_STATUS}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🏥 Health: ${CONTAINER_HEALTH}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🕒 Started: ${CONTAINER_STARTED}" >> $GITHUB_STEP_SUMMARY
+
+            # Add container resource usage
+            CONTAINER_STATS=$(docker stats app-test --no-stream --format "{{.CPUPerc}},{{.MemUsage}},{{.NetIO}},{{.BlockIO}}")
+            IFS=',' read -r CPU MEM NET BLOCK <<< "$CONTAINER_STATS"
+            echo "- 📊 Resource Usage:" >> $GITHUB_STEP_SUMMARY
+            echo "  - CPU: ${CPU}" >> $GITHUB_STEP_SUMMARY
+            echo "  - Memory: ${MEM}" >> $GITHUB_STEP_SUMMARY
+            echo "  - Network I/O: ${NET}" >> $GITHUB_STEP_SUMMARY
+            echo "  - Block I/O: ${BLOCK}" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Image Details
+          echo "#### 📦 Image Details" >> $GITHUB_STEP_SUMMARY
           if docker image inspect zx8086/capellaql:latest >/dev/null 2>&1; then
             IMAGE_SIZE=$(docker image inspect zx8086/capellaql:latest --format='{{.Size}}')
             IMAGE_SIZE_MB=$((IMAGE_SIZE/1024/1024))
             LAYER_COUNT=$(docker image inspect zx8086/capellaql:latest --format='{{len .RootFS.Layers}}')
+            CREATED=$(docker image inspect zx8086/capellaql:latest --format='{{.Created}}')
 
-            echo "#### Image Details" >> $GITHUB_STEP_SUMMARY
             echo "- 📦 Size: ${IMAGE_SIZE_MB}MB" >> $GITHUB_STEP_SUMMARY
             echo "- 📚 Layers: ${LAYER_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- 🔄 Created: $(docker image inspect zx8086/capellaql:latest --format='{{.Created}}')" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔄 Created: ${CREATED}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🏗️ Architecture: $(docker image inspect zx8086/capellaql:latest --format='{{.Os}}/{{.Architecture}}')" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Download Information
-          echo "#### 📥 Build Record" >> $GITHUB_STEP_SUMMARY
-          echo "Build records include details such as timing, dependencies, results, logs, traces, and other information about a build." >> $GITHUB_STEP_SUMMARY
+          # Security Scan Results
+          echo "#### 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          if [ -f "snyk-docker.sarif" ]; then
+            VULN_COUNT=$(grep -c "issue" snyk-docker.sarif || echo "0")
+            HIGH_VULN_COUNT=$(grep -c '"level":"high"' snyk-docker.sarif || echo "0")
+            echo "- 🛡️ Total Vulnerabilities: ${VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ High Severity: ${HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Build ID: ${GITHUB_RUN_ID}" >> $GITHUB_STEP_SUMMARY
-          echo "Repository: ${GITHUB_REPOSITORY}" >> $GITHUB_STEP_SUMMARY
-          echo "Workflow: ${GITHUB_WORKFLOW}" >> $GITHUB_STEP_SUMMARY
+
+          # Build Record
+          echo "#### 📋 Build Record" >> $GITHUB_STEP_SUMMARY
+          echo "- 🆔 Build ID: ${GITHUB_RUN_ID}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📁 Repository: ${GITHUB_REPOSITORY}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Workflow: ${GITHUB_WORKFLOW}" >> $GITHUB_STEP_SUMMARY
+          echo "- 👤 Triggered by: ${GITHUB_ACTOR}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌿 Branch: ${GITHUB_REF_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 Run Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
 
       # Enhanced cleanup with workspace cleaning
       - name: Cleanup
