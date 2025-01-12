@@ -6,7 +6,7 @@ FROM oven/bun:canary-alpine AS base
 LABEL maintainer="Simon Owusu simonowusupvh@gmail.com"
 LABEL description="CapellaQL GraphQL Service"
 LABEL version="2.0.0"
-LABEL org.opencontainers.image.source="https://github.com/zx8086/capellaQL"
+LABEL org.opencontainers.image.source="https://github.com/zx8086/capellaql"
 
 # Set common environment variables
 ENV CN_ROOT=/usr/src/app \
