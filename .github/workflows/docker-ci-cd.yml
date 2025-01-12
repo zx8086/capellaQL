@@ -185,7 +185,7 @@ jobs:
             type=registry,ref=zx8086/capellaql:buildcache
           build-args: |
             NODE_ENV=production
-            BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
+            BUILD_VERSION=${{ github.ref_name || '2.0.0' }}
             COMMIT_HASH=${{ github.sha }}
             BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
             BASE_URL=${{ vars.BASE_URL }}

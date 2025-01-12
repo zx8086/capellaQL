@@ -10,7 +10,7 @@ import { log, warn, err, debug } from "$utils/simpleLogger";
 import { otlpConfig } from "./otlpConfig";
 
 // Import Bun DNS with type checking
-let bunDns;
+let bunDns: any;
 try {
   bunDns = require("bun").dns;
 } catch {
@@ -230,7 +230,7 @@ export abstract class MonitoredOTLPExporter<T> {
     itemCount: number,
     duration: number,
   ): void {
-    const dnsStats = dns.getCacheStats();
+    const dnsStats = bunDns.getCacheStats();
     err(`Failed to export ${itemCount} items after ${duration}ms:`);
     if (error instanceof Error) {
       err(`Error name: ${error.name}`);
@@ -251,7 +251,7 @@ export abstract class MonitoredOTLPExporter<T> {
   }
 
   protected async baseShutdown(): Promise<void> {
-    const finalDnsStats = dns.getCacheStats();
+    const finalDnsStats = bunDns.getCacheStats();
     debug("Final DNS Cache Stats:", finalDnsStats);
 
     clearInterval(this.logTimer as NodeJS.Timeout);

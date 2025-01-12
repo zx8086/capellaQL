@@ -3,13 +3,8 @@
 import winston from "winston";
 import { ecsFormat } from "@elastic/ecs-winston-format";
 import { OpenTelemetryTransportV3 } from "@opentelemetry/winston-transport";
-// import DailyRotateFile from "winston-daily-rotate-file";
-// import path from "path";
 import { config } from "$config";
 import { trace, context, type SpanContext } from "@opentelemetry/api";
-
-// const rootDir = path.join(__dirname, "..", "..");
-// const logsDir = path.join(rootDir, "logs");
 
 const customFormat = winston.format.combine(
   ecsFormat({ convertReqRes: true, apmIntegration: true }),
@@ -44,13 +39,6 @@ export const logger = winston.createLogger({
     new OpenTelemetryTransportV3({
       level: config.application.LOG_LEVEL,
     }),
-    // new DailyRotateFile({
-    //   filename: path.join(logsDir, "couchbase-capellaQL-service-%DATE%.log"),
-    //   datePattern: "YYYY-MM-DD",
-    //   zippedArchive: true,
-    //   maxSize: config.application.LOG_MAX_SIZE,
-    //   maxFiles: config.application.LOG_MAX_FILES,
-    // }),
   ],
 });
 
