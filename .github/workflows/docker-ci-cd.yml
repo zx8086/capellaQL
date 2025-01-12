@@ -19,55 +19,14 @@ env:
 jobs:
   build-and-deploy:
     runs-on: self-hosted
+
     steps:
       - uses: actions/checkout@v4
 
-      # Enhanced metadata handling
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: zx8086/capellaql
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=long
-            type=ref,event=branch
-            type=ref,event=tag
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v3
-        continue-on-error: true
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
+      # Initial Setup
       - name: Set build timestamp
         id: timestamp
         run: echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
-
-      - name: Pre-cleanup
-        run: |
-          docker system prune -a -f
-          docker builder prune -a -f
-        continue-on-error: true
-
-      - name: Install dependencies and run post-install scripts
-        run: |
-          bun install
-          bun pm untrusted || true
-          bun pm trust --all || true
 
       - name: Create .env file
         run: |
@@ -101,8 +60,46 @@ jobs:
           PRESERVE_SOURCE_MAPS=${{ vars.PRESERVE_SOURCE_MAPS }}
           EOF
 
-      # Enhanced Snyk security checks
-      - name: Run Snyk checks
+      # Docker metadata setup
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: zx8086/capellaql
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=tag
+
+      # Platform and runtime setup
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v3
+        continue-on-error: true
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies and run post-install scripts
+        run: |
+          bun install
+          bun pm untrusted || true
+          bun pm trust --all || true
+
+      # Security scanning section
+      - name: Run Snyk code scan
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -111,13 +108,21 @@ jobs:
           bun run snyk test --file=package.json --sarif-file-output=snyk.sarif --severity-threshold=high
           bun run snyk monitor --file=package.json
 
-      - name: Upload Snyk scan results to GitHub Code Scanning
+      - name: Upload Snyk code scan results
         if: hashFiles('snyk.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk.sarif
           category: snyk-code
 
+      # Pre-build cleanup
+      - name: Pre-build cleanup
+        run: |
+          docker system prune -a -f
+          docker builder prune -a -f
+        continue-on-error: true
+
+      # Docker build and push section
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -133,6 +138,7 @@ jobs:
           platforms: linux/arm64,linux/amd64
 
       - name: Build and push Docker image
+        id: docker_build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -175,6 +181,54 @@ jobs:
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
 
+      # Generate build record during build
+      - name: Generate Docker Build Record
+        if: success()
+        run: |
+          BUILD_RECORD_FILE="docker-build-records/zx8086-capellaql-${GITHUB_SHA::8}.dockerbuild"
+          mkdir -p docker-build-records
+
+          cat << EOF > "${BUILD_RECORD_FILE}"
+          {
+            "id": "${GITHUB_SHA}",
+            "name": "capellaQL",
+            "status": "completed",
+            "cached": false,
+            "duration": $(date +%s),
+            "build_inputs": {
+              "build-args": {
+                "NODE_ENV": "production",
+                "BUILD_VERSION": "${GITHUB_REF_NAME:-0.0.1}",
+                "COMMIT_HASH": "${GITHUB_SHA}",
+                "BUILD_DATE": "${BUILD_TIMESTAMP}"
+              },
+              "context": ".",
+              "platforms": ["linux/arm64", "linux/amd64"],
+              "push": ${{ github.event_name != 'pull_request' }},
+              "tags": ${{ toJSON(steps.meta.outputs.tags) }},
+              "cache-from": ["type=registry,ref=zx8086/capellaql:buildcache"],
+              "cache-to": ["type=registry,ref=zx8086/capellaql:buildcache,mode=max"]
+            },
+            "metadata": {
+              "repository": "${GITHUB_REPOSITORY}",
+              "workflow": "${GITHUB_WORKFLOW}",
+              "run_id": "${GITHUB_RUN_ID}",
+              "actor": "${GITHUB_ACTOR}",
+              "ref": "${GITHUB_REF_NAME}",
+              "sha": "${GITHUB_SHA}"
+            }
+          }
+          EOF
+
+      - name: Upload Build Record
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: docker-build-records
+          path: docker-build-records/
+          retention-days: 90
+
+      # Testing section
       - name: Build local image for testing
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
@@ -215,7 +269,6 @@ jobs:
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
 
-      # Enhanced container testing with health check
       - name: Test container
         if: github.event_name != 'pull_request'
         run: |
@@ -238,13 +291,11 @@ jobs:
             -e LOGS_ENDPOINT=http://localhost:4318/v1/logs \
             zx8086/capellaql:latest
 
-          # Wait for container to start
+          # Wait for container to start and verify
           sleep 10
-
-          # Verify container is running
           docker ps | grep app-test || (docker logs app-test && exit 1)
 
-          # Check container status
+          # Check container health
           CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' app-test)
           if [ "$CONTAINER_STATUS" != "running" ]; then
             echo "Container is not running. Status: $CONTAINER_STATUS"
@@ -259,7 +310,7 @@ jobs:
           docker image inspect zx8086/capellaql:latest
           docker history zx8086/capellaql:latest
 
-      # Enhanced Snyk container scanning
+      # Container security scanning
       - name: Run Snyk container scan
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -276,13 +327,14 @@ jobs:
               --platform=linux/arm64 || true
           fi
 
-      - name: Upload Docker Snyk scan results to GitHub Code Scanning
+      - name: Upload Docker Snyk scan results
         if: always() && hashFiles('snyk-docker.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk-docker.sarif
           category: snyk-docker
 
+      # Build summary
       - name: Docker Build Summary
         if: always()
         run: |
@@ -303,9 +355,12 @@ jobs:
           # Environment Information
           echo "#### 🌍 Environment Details" >> $GITHUB_STEP_SUMMARY
           echo "- 🔰 Node Environment: production" >> $GITHUB_STEP_SUMMARY
-          echo "- 📍 Deployment Environment: ${{ vars.DEPLOYMENT_ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🌐 Base URL: ${{ vars.BASE_URL }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🚪 Port: ${{ vars.PORT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📍 Deployment Environment: ${DEPLOYMENT_ENVIRONMENT:-development}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 Base URL: ${BASE_URL:-http://localhost}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚪 Port: ${PORT:-4000}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📝 Log Level: ${LOG_LEVEL:-info}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 OpenTelemetry: ${ENABLE_OPENTELEMETRY:-false}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 File Logging: ${ENABLE_FILE_LOGGING:-false}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Build Args
@@ -371,9 +426,51 @@ jobs:
           echo "#### 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
           if [ -f "snyk-docker.sarif" ]; then
             VULN_COUNT=$(grep -c "issue" snyk-docker.sarif || echo "0")
+            CRITICAL_VULN_COUNT=$(grep -c '"level":"critical"' snyk-docker.sarif || echo "0")
             HIGH_VULN_COUNT=$(grep -c '"level":"high"' snyk-docker.sarif || echo "0")
-            echo "- 🛡️ Total Vulnerabilities: ${VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- ⚠️ High Severity: ${HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            MEDIUM_VULN_COUNT=$(grep -c '"level":"medium"' snyk-docker.sarif || echo "0")
+            LOW_VULN_COUNT=$(grep -c '"level":"low"' snyk-docker.sarif || echo "0")
+
+            echo "##### 🛡️ Docker Image Vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            echo "- 💀 Critical: ${CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ High: ${HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚡ Medium: ${MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- ℹ️ Low: ${LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- 📊 Total: ${VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ℹ️ No Docker image vulnerability scan results available" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f "snyk.sarif" ]; then
+            CODE_VULN_COUNT=$(grep -c "issue" snyk.sarif || echo "0")
+            CODE_CRITICAL_VULN_COUNT=$(grep -c '"level":"critical"' snyk.sarif || echo "0")
+            CODE_HIGH_VULN_COUNT=$(grep -c '"level":"high"' snyk.sarif || echo "0")
+            CODE_MEDIUM_VULN_COUNT=$(grep -c '"level":"medium"' snyk.sarif || echo "0")
+            CODE_LOW_VULN_COUNT=$(grep -c '"level":"low"' snyk.sarif || echo "0")
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "##### 🔍 Code Vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            echo "- 💀 Critical: ${CODE_CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ High: ${CODE_HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚡ Medium: ${CODE_MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- ℹ️ Low: ${CODE_LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            echo "- 📊 Total: ${CODE_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ℹ️ No code vulnerability scan results available" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Additional Security Information
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "##### 🔐 Security Configurations" >> $GITHUB_STEP_SUMMARY
+          echo "- 🛡️ Snyk Severity Threshold: high" >> $GITHUB_STEP_SUMMARY
+          echo "- 📝 Scan Type: Container & Code" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Continuous Monitoring: $([ "${{ github.ref }}" == "refs/heads/master" ] && echo "Enabled" || echo "Disabled")" >> $GITHUB_STEP_SUMMARY
+
+          # Security Recommendations
+          if [ $((HIGH_VULN_COUNT + CODE_HIGH_VULN_COUNT)) -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Security Recommendations**" >> $GITHUB_STEP_SUMMARY
+            echo "- High severity vulnerabilities detected. Review security scan reports." >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
 
@@ -385,6 +482,15 @@ jobs:
           echo "- 👤 Triggered by: ${GITHUB_ACTOR}" >> $GITHUB_STEP_SUMMARY
           echo "- 🌿 Branch: ${GITHUB_REF_NAME}" >> $GITHUB_STEP_SUMMARY
           echo "- 📅 Run Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 📥 Docker Build Record Download" >> $GITHUB_STEP_SUMMARY
+          echo "Download the build record to view detailed build information in Docker Desktop:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to the Actions tab" >> $GITHUB_STEP_SUMMARY
+          echo "2. Select this workflow run" >> $GITHUB_STEP_SUMMARY
+          echo "3. Download the \`docker-build-records\` artifact" >> $GITHUB_STEP_SUMMARY
+          echo "4. Import the .dockerbuild file into Docker Desktop's Builds view" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
       # Enhanced cleanup with workspace cleaning
       - name: Cleanup
