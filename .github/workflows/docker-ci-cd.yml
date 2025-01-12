@@ -22,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Enhanced metadata handling
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -100,6 +101,7 @@ jobs:
           PRESERVE_SOURCE_MAPS=${{ vars.PRESERVE_SOURCE_MAPS }}
           EOF
 
+      # Enhanced Snyk security checks
       - name: Run Snyk checks
         continue-on-error: true
         env:
@@ -213,6 +215,7 @@ jobs:
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
 
+      # Enhanced container testing with health check
       - name: Test container
         if: github.event_name != 'pull_request'
         run: |
@@ -225,15 +228,27 @@ jobs:
             -e BUILD_VERSION=${{ github.ref_name || '0.0.1' }} \
             -e COMMIT_HASH=${{ github.sha }} \
             -e BUILD_DATE=${{ env.BUILD_TIMESTAMP }} \
+            --health-cmd="curl -f http://localhost:4000/health || exit 1" \
+            --health-interval=10s \
+            --health-timeout=5s \
+            --health-retries=3 \
             zx8086/capellaql:latest
           sleep 10
           docker ps | grep app-test || (docker logs app-test && exit 1)
+
+          # Additional health check verification
+          HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' app-test)
+          if [ "$HEALTH_STATUS" != "healthy" ]; then
+            docker logs app-test
+            exit 1
+          fi
 
       - name: Inspect Docker image
         run: |
           docker image inspect zx8086/capellaql:latest
           docker history zx8086/capellaql:latest
 
+      # Enhanced Snyk container scanning
       - name: Run Snyk container scan
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -257,6 +272,7 @@ jobs:
           sarif_file: snyk-docker.sarif
           category: snyk-docker
 
+      # Enhanced cleanup with workspace cleaning
       - name: Cleanup
         if: always()
         continue-on-error: true
@@ -266,4 +282,8 @@ jobs:
           docker image prune -f
           docker volume prune -f
           docker builder prune -a -f
+          # Additional workspace cleanup
+          rm -rf node_modules
+          rm -rf .gradle
+          rm -rf build
           echo "Cleanup completed"
