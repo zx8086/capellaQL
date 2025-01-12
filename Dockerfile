@@ -1,7 +1,7 @@
 # Dockerfile
 
 # Use a more lightweight base image
-FROM oven/bun:1.1.43 AS base
+FROM oven/bun:1.1.43-slim AS base
 
 LABEL maintainer="Simon Owusu simonowusupvh@gmail.com"
 LABEL description="CapellaQL GraphQL Service"
