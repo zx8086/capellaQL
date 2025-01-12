@@ -49,14 +49,26 @@ COPY --chown=bun:bun . .
 RUN bun install --production
 
 # Add build step to generate source maps
-RUN bun build ./src/index.ts \
+RUN set -e; \
+    echo "Building application..." && \
+    bun build ./src/index.ts \
     --target=node \
     --outdir ./dist \
     --sourcemap \
     --external dns \
-    --external bun && \
+    --external bun \
+    --manifest && \
+    echo "Build output contents:" && \
+    ls -la /usr/src/app/dist/ && \
+    echo "Creating maps directory..." && \
     mkdir -p /usr/src/app/dist/maps && \
-    mv /usr/src/app/dist/*.map /usr/src/app/dist/maps/
+    echo "Looking for source maps..." && \
+    if find /usr/src/app/dist -name "*.map" -exec mv {} /usr/src/app/dist/maps/ \; ; then \
+    echo "Source maps moved successfully"; \
+    else \
+    echo "No source maps found to move"; \
+    fi && \
+    echo "Build process completed"
 
 # Set runtime environment variables
 ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
@@ -72,13 +84,16 @@ ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
 # Set ownership of app directory to bun user
 RUN chown -R bun:bun /usr/src/app
 
-# Switch to non-root user early
+# Install curl for healthcheck (using apt-get instead of apk)
+USER root
+RUN apt-get update && \
+    apt-get install -y curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Switch back to non-root user
 USER bun
 
 EXPOSE 4000/tcp
-
-# Add curl for healthcheck
-RUN apk add --no-cache curl
 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:4000/health || exit 1

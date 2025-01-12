@@ -11,24 +11,29 @@
 
     // Bundler mode
     "moduleResolution": "node",
-    // "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
     "noEmit": false,
     "noImplicitAny": false,
 
+    // Source Map Configuration
+    "sourceMap": true, // Enable source map generation
+    "inlineSources": true, // Include source code in source maps
+    "sourceRoot": "/", // Help debuggers locate source files
+    "declaration": true, // Generate .d.ts files
+    "declarationMap": true, // Generate source maps for .d.ts files
+
     // Best practices
     "strict": true,
-    "sourceMap": true,
-    "inlineSourceMap": false,
-    "inlineSources": true,
-    "declarationMap": true, // If you're generating declaration files
-    "sourceRoot": "/", // Help debuggers locate source files
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
+
+    // Output configuration
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": ".",
+
+    // Path aliases
     "paths": {
       "$lib": ["src/lib"],
       "$config": ["src/config.ts"],
@@ -38,8 +43,8 @@
       "$models": ["src/models"],
       "$models/*": ["src/models/*"]
     },
-    "types": [],
-    // Some stricter flags (enabled for better code quality)
+
+    // Some stricter flags
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
