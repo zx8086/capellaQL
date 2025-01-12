@@ -217,7 +217,7 @@ jobs:
 
       # Enhanced container testing with health check
       - name: Test container
-        continue-on-error: true
+        # continue-on-error: true
         if: github.event_name != 'pull_request'
         run: |
           docker ps -q --filter publish=4000 | xargs -r docker stop
