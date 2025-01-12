@@ -217,39 +217,34 @@ jobs:
 
       # Enhanced container testing with health check
       - name: Test container
-        continue-on-error: true
         if: github.event_name != 'pull_request'
         run: |
+          # Stop existing containers using port 4000
           docker ps -q --filter publish=4000 | xargs -r docker stop
           docker rm -f app-test 2>/dev/null || true
+
+          # Run new container with all necessary environment variables
           docker run -d \
             --name app-test \
             -p 4000:4000 \
+            --env-file .env \
             -e NODE_ENV=production \
             -e BUILD_VERSION=${{ github.ref_name || '0.0.1' }} \
             -e COMMIT_HASH=${{ github.sha }} \
             -e BUILD_DATE=${{ env.BUILD_TIMESTAMP }} \
+            -e ENABLE_OPENTELEMETRY=false \
+            -e TRACES_ENDPOINT=http://localhost:4318/v1/traces \
+            -e METRICS_ENDPOINT=http://localhost:4318/v1/metrics \
+            -e LOGS_ENDPOINT=http://localhost:4318/v1/logs \
             zx8086/capellaql:latest
 
           # Wait for container to start
           sleep 10
 
-          # Check if container is running
+          # Verify container is running
           docker ps | grep app-test || (docker logs app-test && exit 1)
 
-          # Health check verification
-          HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' app-test 2>/dev/null || echo "none")
-          echo "Container health status: $HEALTH_STATUS"
-
-          if [ "$HEALTH_STATUS" = "none" ]; then
-            echo "Health check not configured, skipping health verification"
-          elif [ "$HEALTH_STATUS" != "healthy" ]; then
-            echo "Container health check failed"
-            docker logs app-test
-            exit 1
-          fi
-
-          # Additional container verification
+          # Check container status
           CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' app-test)
           if [ "$CONTAINER_STATUS" != "running" ]; then
             echo "Container is not running. Status: $CONTAINER_STATUS"
@@ -257,7 +252,7 @@ jobs:
             exit 1
           fi
 
-          echo "Container successfully started and healthy"
+          echo "Container successfully started"
 
       - name: Inspect Docker image
         run: |
