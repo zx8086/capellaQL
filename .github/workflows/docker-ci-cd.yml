@@ -217,11 +217,13 @@ jobs:
 
       # Enhanced container testing with health check
       - name: Test container
-        # continue-on-error: true
         if: github.event_name != 'pull_request'
         run: |
+          # Stop any existing containers on port 4000
           docker ps -q --filter publish=4000 | xargs -r docker stop
           docker rm -f app-test 2>/dev/null || true
+
+          # Run the container with environment variables
           docker run -d \
             --name app-test \
             -p 4000:4000 \
@@ -230,16 +232,40 @@ jobs:
             -e BUILD_VERSION=${{ github.ref_name || '0.0.1' }} \
             -e COMMIT_HASH=${{ github.sha }} \
             -e BUILD_DATE=${{ env.BUILD_TIMESTAMP }} \
+            --health-cmd="curl -f http://localhost:4000/health || exit 1" \
+            --health-interval=10s \
+            --health-timeout=5s \
+            --health-retries=3 \
+            --health-start-period=10s \
             zx8086/capellaql:latest
+
+          # Wait for container to start
           sleep 10
+
+          # Check if container is running
           docker ps | grep app-test || (docker logs app-test && exit 1)
 
-      # Additional health check verification
-      # HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' app-test)
-      # if [ "$HEALTH_STATUS" != "healthy" ]; then
-      #   docker logs app-test
-      #   exit 1
-      # fi
+          # Health check verification
+          HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' app-test 2>/dev/null || echo "none")
+          echo "Container health status: $HEALTH_STATUS"
+
+          if [ "$HEALTH_STATUS" = "none" ]; then
+            echo "Health check not configured, skipping health verification"
+          elif [ "$HEALTH_STATUS" != "healthy" ]; then
+            echo "Container health check failed"
+            docker logs app-test
+            exit 1
+          fi
+
+          # Additional container verification
+          CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' app-test)
+          if [ "$CONTAINER_STATUS" != "running" ]; then
+            echo "Container is not running. Status: $CONTAINER_STATUS"
+            docker logs app-test
+            exit 1
+          fi
+
+          echo "Container successfully started and healthy"
 
       - name: Inspect Docker image
         run: |
