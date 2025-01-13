@@ -21,9 +21,8 @@ env:
   DOCKER_BUILDKIT_CACHE: 1
   CACHE_FROM: type=registry,ref=zx8086/capellaql:buildcache
   CACHE_TO: type=registry,ref=zx8086/capellaql:buildcache,mode=max
-  # Add these new variables here
-  BUILDX_CACHE_TTL: "168h" # Cache TTL of 1 week
-  BUILDX_MAX_PARALLEL: "4" # Limit concurrent operations
+  BUILDX_CACHE_TTL: "168h"
+  BUILDX_MAX_PARALLEL: "4"
   BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
   BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -141,14 +140,12 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Set up Docker Buildx
-        id: buildx
         uses: docker/setup-buildx-action@v3
         with:
-          version: latest
-          driver: docker-container
+          driver: cloud
+          endpoint: "zx8086/cldbuild"
           install: true
           platforms: linux/arm64,linux/amd64
-          buildkitd-flags: --debug
 
       - name: Cache Docker layers
         uses: actions/cache@v3
@@ -173,7 +170,6 @@ jobs:
             type=gha,mode=max,scope=${{ github.workflow }}
 
       - name: Build and push Docker image
-        id: docker_build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -183,17 +179,11 @@ jobs:
           platforms: linux/arm64,linux/amd64
           provenance: true
           sbom: true
-          outputs: |
-            type=registry,push=${{ github.event_name != 'pull_request' }}
-            type=oci,dest=/tmp/image.tar
           cache-from: |
-            type=local,src=/tmp/.buildx-cache
             type=registry,ref=zx8086/capellaql:buildcache
-            type=gha,scope=${{ github.workflow }}
           cache-to: |
-            type=local,dest=/tmp/.buildx-cache-new,mode=max
             type=registry,ref=zx8086/capellaql:buildcache,mode=max
-            type=gha,mode=max,scope=${{ github.workflow }}
+          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
           build-args: |
             BUILDKIT_INLINE_CACHE=1
             DOCKER_BUILDKIT=1
