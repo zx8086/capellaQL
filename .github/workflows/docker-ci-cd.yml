@@ -21,6 +21,11 @@ env:
   DOCKER_BUILDKIT_CACHE: 1
   CACHE_FROM: type=registry,ref=zx8086/capellaql:buildcache
   CACHE_TO: type=registry,ref=zx8086/capellaql:buildcache,mode=max
+  # Add these new variables here
+  BUILDX_CACHE_TTL: "168h" # Cache TTL of 1 week
+  BUILDX_MAX_PARALLEL: "4" # Limit concurrent operations
+  BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
+  BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
 jobs:
   build-and-deploy:
@@ -182,9 +187,11 @@ jobs:
             type=registry,push=${{ github.event_name != 'pull_request' }}
             type=oci,dest=/tmp/image.tar
           cache-from: |
+            type=local,src=/tmp/.buildx-cache
             type=registry,ref=zx8086/capellaql:buildcache
             type=gha,scope=${{ github.workflow }}
           cache-to: |
+            type=local,dest=/tmp/.buildx-cache-new,mode=max
             type=registry,ref=zx8086/capellaql:buildcache,mode=max
             type=gha,mode=max,scope=${{ github.workflow }}
           build-args: |
@@ -221,9 +228,14 @@ jobs:
 
       # Update Docker cache
       - name: Move cache
+        if: github.event_name != 'pull_request'
         run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          if [ -d "/tmp/.buildx-cache-new" ]; then
+            rm -rf /tmp/.buildx-cache
+            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          else
+            echo "Cache directory .buildx-cache-new not found, skipping cache move"
+          fi
 
       - name: Capture Build Output
         run: |
