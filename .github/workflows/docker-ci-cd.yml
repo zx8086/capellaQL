@@ -152,8 +152,8 @@ jobs:
           provenance: true
           sbom: true
           outputs: |
-            ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
-            type=docker,dest=/tmp/image.tar
+            type=oci,dest=/tmp/image.tar
+            type=registry,push=${{ github.event_name != 'pull_request' }}
           cache-from: |
             type=registry,ref=zx8086/capellaql:buildcache
           cache-to: |
