@@ -138,6 +138,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          registry: docker.io
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -168,10 +169,9 @@ jobs:
           platforms: linux/arm64,linux/amd64
           provenance: true
           sbom: true
-          cache-from: |
-            type=registry,ref=zx8086/capellaql:buildcache
-          cache-to: |
-            type=registry,ref=zx8086/capellaql:buildcache,mode=max
+          registry: docker.io
+          cache-from: type=registry,ref=docker.io/zx8086/capellaql:buildcache
+          cache-to: type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
           build-args: |
             BUILDKIT_INLINE_CACHE=1
