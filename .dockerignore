@@ -1,31 +1,20 @@
-# .dockerignore
-
+# Dependencies
 node_modules
 /.pnp
 .pnp.js
+.yarn
+.yarnrc.yml
+yarn.lock
+package-lock.json
+**/*.bun
 
-# Testing
-/coverage
-
-# Next.js
+# Build outputs
+/build
+/dist
 /.next
 /out
 
-# Production
-/build
-/dist
-
-# Misc
-.DS_Store
-*.pem
-
-# Debug logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-**/*.log
-
-# Local env files
+# Environment and local files
 .env
 .env.local
 .env.development.local
@@ -33,56 +22,42 @@ yarn-error.log*
 .env.production.local
 docker.env
 
+# Logs and debugging
+logs/
+/src/logs/*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+**/*.log
+
+# Testing and coverage
+/coverage
+.nyc_output
+/test
+k6
 
 # Version control
 .git
+.github
 .gitignore
 
 # Docker
 .dockerignore
 Dockerfile
 
-# IDE
+# IDE and system files
 .vscode
+.DS_Store
+*.pem
 
-# Package managers
-yarn.lock
-package-lock.json
-**/*.bun
+# Documentation
+*.md
 
-# Compressed files
+# Archives
 **/*.trace
 **/*.zip
 **/*.tar.gz
 **/*.tgz
 
-# Documentation
-*.md
-
-# Yarn
-.yarn
-.yarnrc.yml
-
-# Logs
-logs
-/src/logs/*
-
-# Vercel
+# Misc
 .vercel
-
-# k6
-/test
-k6
-
-.git
-.github
-node_modules
-dist
-*.log
-
-*.md
-.gitignore
-
-coverage
-.nyc_output
-.DS_Store

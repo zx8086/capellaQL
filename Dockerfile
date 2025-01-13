@@ -24,9 +24,8 @@ FROM base AS deps
 COPY --chown=bun:bun package.json bun.lockb ./
 
 # Install dependencies with improved caching
-RUN --mount=type=cache,target=/root/.bun \
+RUN --mount=type=cache,target=/root/.bun,sharing=locked \
     bun install --frozen-lockfile && \
-    # Ensure node_modules exists and is owned by bun
     mkdir -p node_modules && \
     chown -R bun:bun node_modules
 
@@ -45,6 +44,33 @@ FROM deps AS builder
 COPY --chown=bun:bun . .
 
 # Build the application
+RUN --mount=type=cache,target=/usr/src/app/.build \
+    set -ex; \
+    echo "Building application..." && \
+    bun build ./src/index.ts \
+    --target=node \
+    --outdir ./dist \
+    --sourcemap \
+    --external dns \
+    --external bun \
+    --manifest && \
+    mkdir -p dist/maps && \
+    find dist -name "*.map" -exec mv {} dist/maps/ \; || true
+
+# Final release stage
+FROM deps AS release
+
+# Set production environment
+ENV NODE_ENV=production \
+    ENABLE_OPENTELEMETRY=true
+
+# Copy source files with proper ownership
+COPY --chown=bun:bun . .
+
+# Install dependencies again to ensure they're available for the build
+RUN bun install --production
+
+# Add build step to generate source maps
 RUN set -e; \
     echo "Building application..." && \
     bun build ./src/index.ts \
@@ -54,20 +80,17 @@ RUN set -e; \
     --external dns \
     --external bun \
     --manifest && \
-    # Create and populate maps directory
-    mkdir -p dist/maps && \
-    find dist -name "*.map" -exec mv {} dist/maps/ \; || true
-
-# Final release stage
-FROM base AS release
-
-# Copy only necessary files from previous stages
-COPY --chown=bun:bun package.json bun.lockb ./
-RUN --mount=type=cache,target=/root/.bun \
-    bun install --production --frozen-lockfile
-
-# Copy build artifacts
-COPY --chown=bun:bun --from=builder /usr/src/app/dist ./dist
+    echo "Build output contents:" && \
+    ls -la /usr/src/app/dist/ && \
+    echo "Creating maps directory..." && \
+    mkdir -p /usr/src/app/dist/maps && \
+    echo "Looking for source maps..." && \
+    if find /usr/src/app/dist -name "*.map" -exec mv {} /usr/src/app/dist/maps/ \; ; then \
+    echo "Source maps moved successfully"; \
+    else \
+    echo "No source maps found to move"; \
+    fi && \
+    echo "Build process completed"
 
 # Add labels in final stage
 LABEL org.opencontainers.image.title="capellaql" \
@@ -123,5 +146,8 @@ ENV BASE_URL="" \
 
 USER bun
 EXPOSE 4000/tcp
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD bun run healthcheck || exit 1
 
 CMD ["bun", "run", "start"]
