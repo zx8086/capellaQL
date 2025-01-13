@@ -216,17 +216,6 @@ jobs:
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
 
-      # Update Docker cache
-      - name: Move cache
-        if: github.event_name != 'pull_request'
-        run: |
-          if [ -d "/tmp/.buildx-cache-new" ]; then
-            rm -rf /tmp/.buildx-cache
-            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-          else
-            echo "Cache directory .buildx-cache-new not found, skipping cache move"
-          fi
-
       - name: Capture Build Output
         run: |
           echo "::group::Docker Build Output"
