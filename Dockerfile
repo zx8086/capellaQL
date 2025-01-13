@@ -1,6 +1,8 @@
 # Dockerfile
 
 # Use a more lightweight base image
+# syntax=docker/dockerfile:1.4
+
 FROM oven/bun:canary-alpine AS base
 
 ARG BUILD_DATE
@@ -21,6 +23,9 @@ LABEL org.opencontainers.image.url="https://github.com/zx8086/capellaql"
 LABEL org.opencontainers.image.source="https://github.com/zx8086/capellaql"
 LABEL org.opencontainers.image.documentation="https://github.com/zx8086/capellaql/README.md"
 LABEL org.opencontainers.image.base.name="oven/bun:canary-alpine"
+LABEL org.opencontainers.image.source.repository="github.com/zx8086/capellaql"
+LABEL org.opencontainers.image.source.branch="${GITHUB_REF_NAME:-master}"
+LABEL org.opencontainers.image.source.commit="${COMMIT_HASH}"
 
 # Custom labels (if needed)
 LABEL com.capellaql.maintainer="Simon Owusu <simonowusupvh@gmail.com>"

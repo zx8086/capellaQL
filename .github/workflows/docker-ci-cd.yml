@@ -13,6 +13,7 @@ permissions:
 
 env:
   DOCKER_BUILDKIT: 1
+  BUILDX_EXPERIMENTAL: 1
   COMPOSE_DOCKER_CLI_BUILD: 1
   BUILDX_NO_DEFAULT_LOAD: true
 
@@ -132,6 +133,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
+          version: latest
+          buildkitd-flags: --debug
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
           driver: cloud
           endpoint: "zx8086/cldbuild"
           install: true
@@ -146,6 +152,16 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/arm64,linux/amd64
+          provenance: mode=max
+          attest: |
+            type=provenance,mode=max
+            type=sbom
+            type=vuln
+          attestation-policies: |
+            uri=docker/dockerfile:1
+            reproducible=true
+            materials=true
+          sbom: true
           cache-from: |
             type=registry,ref=zx8086/capellaql:buildcache
           cache-to: |
@@ -180,6 +196,57 @@ jobs:
             BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=${{ vars.BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS }}
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
+
+      - name: Verify image attestations
+        if: github.event_name != 'pull_request'
+        run: |
+          docker buildx imagetools inspect zx8086/capellaql:latest \
+            --format "{{ json .Provenance.SLSA }}" > provenance.json
+
+          # Verify key attestation fields are present
+          jq -e '.predicate.buildType == "https://mobyproject.org/buildkit@v1"' provenance.json
+          jq -e '.predicate.materials[].uri' provenance.json
+          jq -e '.predicate.metadata."https://mobyproject.org/buildkit@v1#metadata".vcs.revision' provenance.json
+
+      - name: Verify vulnerability attestation
+        if: github.event_name != 'pull_request'
+        run: |
+          docker buildx imagetools inspect zx8086/capellaql:latest \
+            --format "{{ json .VulnerabilityScan }}" > vuln-attestation.json
+
+          # Verify vulnerability scan attestation
+          jq -e '.scanner.name' vuln-attestation.json
+          jq -e '.metadata.scanFinishedOn' vuln-attestation.json
+
+      - name: Verify SLSA provenance
+        if: github.event_name != 'pull_request'
+        run: |
+          # Verify basic SLSA fields
+          jq -e '.predicateType == "https://slsa.dev/provenance/v0.2"' provenance.json
+
+          # Verify builder identity
+          jq -e '.predicate.builder.id' provenance.json
+
+          # Verify build type
+          jq -e '.predicate.buildType == "https://mobyproject.org/buildkit@v1"' provenance.json
+
+          # Verify materials are present
+          jq -e '.predicate.materials | length > 0' provenance.json
+
+          # Verify build metadata
+          jq -e '.predicate.metadata.buildInvocationID' provenance.json
+          jq -e '.predicate.metadata.buildStartedOn' provenance.json
+          jq -e '.predicate.metadata.buildFinishedOn' provenance.json
+
+      - name: Verify SBOM
+        if: github.event_name != 'pull_request'
+        run: |
+          docker buildx imagetools inspect zx8086/capellaql:latest \
+            --format "{{ json .SBOM }}" > sbom.json
+
+          # Verify SBOM content
+          jq -e '.bomFormat == "CycloneDX"' sbom.json
+          jq -e '.components | length > 0' sbom.json
 
       # Generate build record during build
       - name: Generate Docker Build Record
