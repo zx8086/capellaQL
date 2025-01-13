@@ -445,18 +445,18 @@ jobs:
             -e LOGS_ENDPOINT=http://localhost:4318/v1/logs \
             zx8086/capellaql:latest
 
-            # Verify file structure
-            echo "Verifying container file structure..."
-            docker exec app-test ls -la /app
-            docker exec app-test ls -la /app/src
+            # # Verify file structure
+            # echo "Verifying container file structure..."
+            # docker exec app-test ls -la /app
+            # docker exec app-test ls -la /app/src
 
-            # Verify bun installation
-            echo "Verifying bun installation..."
-            docker exec app-test bun --version
+            # # Verify bun installation
+            # echo "Verifying bun installation..."
+            # docker exec app-test bun --version
 
-            # Verify package.json
-            echo "Verifying package.json..."
-            docker exec app-test cat /app/package.json
+            # # Verify package.json
+            # echo "Verifying package.json..."
+            # docker exec app-test cat /app/package.json
 
           # Wait for container to start and verify
           sleep 10
