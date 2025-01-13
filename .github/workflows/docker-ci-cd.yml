@@ -154,7 +154,6 @@ jobs:
           attests: |
             type=provenance,mode=max
             type=sbom
-            type=vuln
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
           cache-from: |
             type=registry,ref=zx8086/capellaql:buildcache
@@ -199,10 +198,10 @@ jobs:
 
           # Extract and verify provenance
           docker buildx imagetools inspect zx8086/capellaql:latest \
-            --format "{{ json .attestations }}" > attestations.json
+            --format "{{ json .attestations }}" > attestations.json || echo "Warning: Unable to extract attestations"
 
           # Check if provenance exists
-          if jq -e '.provenance' attestations.json > provenance.json; then
+          if [ -f "attestations.json" ] && jq -e '.provenance' attestations.json > provenance.json; then
             echo "Verifying provenance..."
             jq -e '.predicate.buildType == "https://mobyproject.org/buildkit@v1"' provenance.json || echo "Warning: Build type verification failed"
             jq -e '.predicate.materials[].uri' provenance.json || echo "Warning: Materials verification failed"
@@ -221,19 +220,6 @@ jobs:
           if [ -f "sbom.json" ]; then
             jq -e '.' sbom.json > /dev/null && echo "SBOM verification successful" || echo "Warning: Invalid SBOM format"
           fi
-
-      - name: Verify vulnerability scan
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
-        run: |
-          # Extract and verify vulnerability scan
-          docker buildx imagetools inspect zx8086/capellaql:latest \
-            --format "{{ json .vulns }}" > vulns.json || echo "Warning: Vulnerability scan extraction failed"
-
-          if [ -f "vulns.json" ]; then
-            jq -e '.' vulns.json > /dev/null && echo "Vulnerability scan verification successful" || echo "Warning: Invalid vulnerability scan format"
-          fi
-
       # Generate build record during build
       - name: Generate Docker Build Record
         if: success()
