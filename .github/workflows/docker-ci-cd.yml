@@ -440,11 +440,11 @@ jobs:
             LOW_VULN_COUNT=$(grep -c '"level":"low"' snyk-docker.sarif || echo "0")
 
             echo "##### 🛡️ Docker Image Vulnerabilities" >> $GITHUB_STEP_SUMMARY
-            echo "- 💀 Critical: ${CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- ⚠️ High: ${HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- ⚡ Medium: ${MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- ℹ️ Low: ${LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- 📊 Total: ${VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- 💀 Critical: %s\n" "${CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- ⚠️ High: %s\n" "${HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- ⚡ Medium: %s\n" "${MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- ℹ️ Low: %s\n" "${LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- 📊 Total: %s\n" "${VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ℹ️ No Docker image vulnerability scan results available" >> $GITHUB_STEP_SUMMARY
           fi
@@ -458,11 +458,11 @@ jobs:
 
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "##### 🔍 Code Vulnerabilities" >> $GITHUB_STEP_SUMMARY
-            echo "- 💀 Critical: ${CODE_CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- ⚠️ High: ${CODE_HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- ⚡ Medium: ${CODE_MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- ℹ️ Low: ${CODE_LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- 📊 Total: ${CODE_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- 💀 Critical: %s\n" "${CODE_CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- ⚠️ High: %s\n" "${CODE_HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- ⚡ Medium: %s\n" "${CODE_MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- ℹ️ Low: %s\n" "${CODE_LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
+            printf "- 📊 Total: %s\n" "${CODE_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ℹ️ No code vulnerability scan results available" >> $GITHUB_STEP_SUMMARY
           fi
