@@ -151,10 +151,10 @@ jobs:
           platforms: linux/arm64,linux/amd64
           provenance: true
           sbom: true
-          attests: |
-            type=provenance,mode=max
+          attestations: |
             type=sbom
-          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
+            type=provenance,mode=max
+          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry,provenance=true' }}
           cache-from: |
             type=registry,ref=zx8086/capellaql:buildcache
           cache-to: |
@@ -189,6 +189,23 @@ jobs:
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
 
+      - name: Verify image manifest
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: |
+          # Wait for image to be available
+          sleep 10
+
+          # Check manifest
+          docker buildx imagetools inspect zx8086/capellaql:latest --format '{{json .}}' > manifest.json
+
+          if [ -f "manifest.json" ]; then
+            echo "Checking manifest structure..."
+            jq -e '.manifests[0].Attestations' manifest.json && echo "Attestations found" || echo "Warning: No attestations in manifest"
+          else
+            echo "Warning: Could not fetch manifest"
+          fi
+
       - name: Verify image attestations
         if: github.event_name != 'pull_request'
         continue-on-error: true
@@ -198,15 +215,15 @@ jobs:
 
           # Extract and verify provenance
           docker buildx imagetools inspect zx8086/capellaql:latest \
-            --format "{{ json .attestations }}" > attestations.json || echo "Warning: Unable to extract attestations"
+            --format '{{range $i, $p := index .Manifests 0.Attestations "https://mobyproject.org/buildkit/provenance@v0.1"}}{{if eq $i 0}}{{json .}}{{end}}{{end}}' > provenance.json || echo "Warning: Unable to extract provenance"
 
-          # Check if provenance exists
-          if [ -f "attestations.json" ] && jq -e '.provenance' attestations.json > provenance.json; then
+          if [ -f "provenance.json" ]; then
             echo "Verifying provenance..."
-            jq -e '.predicate.buildType == "https://mobyproject.org/buildkit@v1"' provenance.json || echo "Warning: Build type verification failed"
-            jq -e '.predicate.materials[].uri' provenance.json || echo "Warning: Materials verification failed"
+            jq -e '.predicateType == "https://slsa.dev/provenance/v0.2"' provenance.json || echo "Warning: Invalid predicate type"
+            jq -e '.predicate.builder.id' provenance.json || echo "Warning: Missing builder ID"
+            jq -e '.predicate.buildType' provenance.json || echo "Warning: Missing build type"
           else
-            echo "Warning: No provenance attestation found"
+            echo "Warning: No provenance found"
           fi
 
       - name: Verify SBOM
@@ -215,11 +232,12 @@ jobs:
         run: |
           # Extract and verify SBOM
           docker buildx imagetools inspect zx8086/capellaql:latest \
-            --format "{{ json .sbom }}" > sbom.json || echo "Warning: SBOM extraction failed"
+            --format '{{range $i, $p := index .Manifests 0.Attestations "https://spdx.dev/Document"}}{{if eq $i 0}}{{json .}}{{end}}{{end}}' > sbom.json || echo "Warning: SBOM extraction failed"
 
           if [ -f "sbom.json" ]; then
             jq -e '.' sbom.json > /dev/null && echo "SBOM verification successful" || echo "Warning: Invalid SBOM format"
           fi
+
       # Generate build record during build
       - name: Generate Docker Build Record
         if: success()
