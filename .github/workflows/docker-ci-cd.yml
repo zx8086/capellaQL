@@ -17,6 +17,10 @@ env:
   COMPOSE_DOCKER_CLI_BUILD: 1
   BUILDX_NO_DEFAULT_LOAD: true
   DOCKER_CLI_EXPERIMENTAL: enabled
+  BUILDKIT_PROGRESS: plain
+  DOCKER_BUILDKIT_CACHE: 1
+  CACHE_FROM: type=registry,ref=zx8086/capellaql:buildcache
+  CACHE_TO: type=registry,ref=zx8086/capellaql:buildcache,mode=max
 
 jobs:
   build-and-deploy:
@@ -117,7 +121,7 @@ jobs:
           sarif_file: snyk.sarif
           category: snyk-code
 
-      # Pre-build cleanup
+      # Pre-build cleanup and cache warmup
       - name: Pre-build cleanup
         run: |
           docker system prune -a -f
@@ -139,6 +143,29 @@ jobs:
           driver: docker-container
           install: true
           platforms: linux/arm64,linux/amd64
+          buildkitd-flags: --debug
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Warm up Docker cache
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: false
+          platforms: linux/arm64,linux/amd64
+          cache-from: |
+            type=registry,ref=zx8086/capellaql:buildcache
+            type=gha,scope=${{ github.workflow }}
+          cache-to: |
+            type=gha,mode=max,scope=${{ github.workflow }}
 
       - name: Build and push Docker image
         id: docker_build
@@ -152,13 +179,17 @@ jobs:
           provenance: true
           sbom: true
           outputs: |
-            type=oci,dest=/tmp/image.tar
             type=registry,push=${{ github.event_name != 'pull_request' }}
+            type=oci,dest=/tmp/image.tar
           cache-from: |
             type=registry,ref=zx8086/capellaql:buildcache
+            type=gha,scope=${{ github.workflow }}
           cache-to: |
             type=registry,ref=zx8086/capellaql:buildcache,mode=max
+            type=gha,mode=max,scope=${{ github.workflow }}
           build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            DOCKER_BUILDKIT=1
             NODE_ENV=production
             BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
             BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
@@ -188,6 +219,12 @@ jobs:
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
 
+      # Update Docker cache
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
       - name: Capture Build Output
         run: |
           echo "::group::Docker Build Output"
@@ -205,8 +242,18 @@ jobs:
             # Extract cache information
             CACHE_HITS=$(grep -c "CACHED" buildx.log || echo "0")
             CACHE_MISSES=$(grep -c "DONE" buildx.log || echo "0")
+            TOTAL_STEPS=$(grep -c "DONE\|CACHED" buildx.log || echo "0")
+
+            # Calculate cache ratio
+            if [ "$TOTAL_STEPS" -gt "0" ]; then
+              CACHE_RATIO=$((CACHE_HITS * 100 / TOTAL_STEPS))
+            else
+              CACHE_RATIO=0
+            fi
+
             echo "CACHE_HITS=${CACHE_HITS}" >> $GITHUB_ENV
             echo "CACHE_MISSES=${CACHE_MISSES}" >> $GITHUB_ENV
+            echo "CACHE_RATIO=${CACHE_RATIO}" >> $GITHUB_ENV
 
             # Extract build duration
             BUILD_DURATION=$(grep "time=" buildx.log | tail -n1 | grep -oE 'time=[0-9]+\.[0-9]+' | cut -d= -f2)
@@ -214,6 +261,7 @@ jobs:
 
             # Save log summary
             echo "Build completed with ${CACHE_HITS} cache hits and ${CACHE_MISSES} cache misses"
+            echo "Cache hit ratio: ${CACHE_RATIO}%"
             echo "Total build time: ${BUILD_DURATION}s"
           else
             echo "No build log file found"
@@ -282,6 +330,11 @@ jobs:
             "status": "completed",
             "cached": false,
             "duration": $(date +%s),
+            "cache_metrics": {
+              "hits": ${CACHE_HITS:-0},
+              "misses": ${CACHE_MISSES:-0},
+              "ratio": ${CACHE_RATIO:-0}
+            },
             "build_inputs": {
               "build-args": {
                 "NODE_ENV": "production",
@@ -326,6 +379,8 @@ jobs:
           platforms: linux/arm64
           cache-from: |
             type=registry,ref=zx8086/capellaql:buildcache
+            type=gha,scope=${{ github.workflow }}
+            type=local,src=/tmp/.buildx-cache
           build-args: |
             NODE_ENV=production
             BUILD_VERSION=${{ github.ref_name || '2.0.0' }}
@@ -382,7 +437,7 @@ jobs:
           sleep 10
           docker ps | grep app-test || (docker logs app-test && exit 1)
 
-          # Check container health
+          # Check container health and capture metrics
           CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' app-test)
           if [ "$CONTAINER_STATUS" != "running" ]; then
             echo "Container is not running. Status: $CONTAINER_STATUS"
@@ -390,10 +445,19 @@ jobs:
             exit 1
           fi
 
+          # Capture container metrics for summary
+          echo "CONTAINER_STATUS=${CONTAINER_STATUS}" >> $GITHUB_ENV
+          echo "CONTAINER_START_TIME=$(docker inspect --format='{{.State.StartedAt}}' app-test)" >> $GITHUB_ENV
+
           echo "Container successfully started"
 
       - name: Inspect Docker image
+        id: inspect
         run: |
+          # Capture image details for summary
+          echo "IMAGE_SIZE=$(docker image inspect zx8086/capellaql:latest --format='{{.Size}}')" >> $GITHUB_ENV
+          echo "LAYER_COUNT=$(docker image inspect zx8086/capellaql:latest --format='{{len .RootFS.Layers}}')" >> $GITHUB_ENV
+
           docker image inspect zx8086/capellaql:latest
           docker history zx8086/capellaql:latest
 
@@ -421,269 +485,156 @@ jobs:
           sarif_file: snyk-docker.sarif
           category: snyk-docker
 
-      # Build summary
+      # Optimized Build Summary
       - name: Docker Build Summary
         if: always()
         run: |
-          echo "### 🏗️ Docker Build Details" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            # Header
+            echo "### 🐳 Docker Build Summary"
+            echo ""
 
-          # Calculate build duration and cache metrics
-          BUILD_START_TIME=$(date -d "${{ env.BUILD_TIMESTAMP }}" +%s)
-          BUILD_END_TIME=$(date +%s)
-          BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
+            # Build Overview (combined metrics)
+            echo "#### 📊 Build Overview"
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| 🆔 Build ID | \`${GITHUB_SHA::7}\` |"
+            echo "| 📦 Image | capellaQL |"
+            echo "| ⚡ Status | ${CONTAINER_STATUS:-N/A} |"
+            echo "| ⏱️ Duration | ${BUILD_DURATION:-N/A}s |"
+            echo "| 💾 Cache Hits | ${CACHE_HITS:-0} |"
+            echo "| 🔄 Cache Misses | ${CACHE_MISSES:-0} |"
+            echo "| 📊 Cache Ratio | ${CACHE_RATIO:-0}% |"
+            echo "| 📚 Total Layers | ${LAYER_COUNT:-N/A} |"
+            echo "| 📦 Image Size | $((${IMAGE_SIZE:-0}/1024/1024))MB |"
 
-          # Extract build metrics from Docker build output
-          if [ -f "buildx.log" ]; then
-            CACHE_HITS=$(grep "cached" buildx.log | wc -l)
-            CACHE_MISSES=$(grep "CACHED" buildx.log | wc -l)
-            TOTAL_LAYERS=$(docker image inspect zx8086/capellaql:latest --format='{{len .RootFS.Layers}}' 2>/dev/null || echo "N/A")
-            CACHE_RATIO=$((CACHE_HITS * 100 / (CACHE_HITS + CACHE_MISSES)))
-          else
-            CACHE_HITS=0
-            CACHE_MISSES=0
-            CACHE_RATIO=0
-            TOTAL_LAYERS="N/A"
-          fi
+            # Cache Analysis (enhanced)
+            echo ""
+            echo "#### 🔍 Cache Performance"
+            echo "\`\`\`"
+            echo "Cache Hit Rate: ${CACHE_RATIO}%"
+            echo "Layers Reused: ${CACHE_HITS}"
+            echo "Layers Rebuilt: ${CACHE_MISSES}"
+            echo "Cache Efficiency Score: $(( (CACHE_HITS * 100) / (CACHE_HITS + CACHE_MISSES) ))/100"
+            echo "\`\`\`"
 
-          echo "### 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+            # Build Performance (combined timing metrics)
+            echo ""
+            echo "#### 📈 Build Performance"
+            echo "\`\`\`"
+            echo "Start Time: $(date -d @$BUILD_START_TIME +'%Y-%m-%d %H:%M:%S UTC')"
+            echo "End Time: $(date -d @$BUILD_END_TIME +'%Y-%m-%d %H:%M:%S UTC')"
+            echo "Duration: ${BUILD_DURATION}s"
+            echo "Average Layer Build Time: $(( BUILD_DURATION / (CACHE_HITS + CACHE_MISSES) ))s"
+            echo "\`\`\`"
 
-          # Build Record Summary with cache metrics
-          echo "#### 📊 Build Overview" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🆔 Build ID | \`${GITHUB_SHA::7}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📦 Image | capellaQL |" >> $GITHUB_STEP_SUMMARY
-          echo "| ⏱️ Duration | ${BUILD_DURATION}s |" >> $GITHUB_STEP_SUMMARY
-          echo "| 💾 Cache Hits | ${CACHE_HITS} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔄 Cache Misses | ${CACHE_MISSES} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📊 Cache Ratio | ${CACHE_RATIO}% |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📚 Total Layers | ${TOTAL_LAYERS} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+            # Layer Analysis
+            echo ""
+            echo "#### 📚 Layer Analysis"
+            echo "\`\`\`"
+            docker history zx8086/capellaql:latest --format "table {{.CreatedBy}}\t{{.Size}}\t{{.Comment}}" 2>/dev/null || echo "Layer history not available"
+            echo "\`\`\`"
 
-          # Dynamic Image Size Calculation
-          IMAGE_SIZE=$(docker image inspect zx8086/capellaql:latest --format='{{.Size}}' 2>/dev/null)
-          if [ ! -z "$IMAGE_SIZE" ]; then
-            IMAGE_SIZE_MB=$((IMAGE_SIZE/1024/1024))
-            echo "| 📦 Image Size | ${IMAGE_SIZE_MB}MB |" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+            # Resource Usage (if available)
+            if docker stats --no-stream >/dev/null 2>&1; then
+              echo ""
+              echo "#### 🔋 Resource Usage"
+              echo "\`\`\`"
+              docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" 2>/dev/null
+              echo "\`\`\`"
+            fi
 
-          # Cache Configuration Details
-          echo "#### 💾 Cache Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`yaml" >> $GITHUB_STEP_SUMMARY
-          echo "cache-from:" >> $GITHUB_STEP_SUMMARY
-          echo "  - type=registry,ref=zx8086/capellaql:buildcache" >> $GITHUB_STEP_SUMMARY
-          echo "cache-to:" >> $GITHUB_STEP_SUMMARY
-          echo "  - type=registry,ref=zx8086/capellaql:buildcache,mode=max" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+            # Container Status (enhanced)
+            echo ""
+            echo "#### 🐳 Container Status"
+            if [ "${CONTAINER_STATUS:-}" = "running" ]; then
+              STATS=$(docker stats app-test --no-stream --format "{{.CPUPerc}},{{.MemUsage}},{{.NetIO}},{{.BlockIO}}")
+              IFS=',' read -r CPU MEM NET BLOCK <<< "$STATS"
+              echo "- Status: ✅ Running"
+              echo "- Start Time: ${CONTAINER_START_TIME}"
+              echo "- CPU Usage: ${CPU}"
+              echo "- Memory Usage: ${MEM}"
+              echo "- Network I/O: ${NET}"
+              echo "- Block I/O: ${BLOCK}"
+            else
+              echo "- Status: ⚠️ Not Running"
+            fi
 
-          # Layer Analysis
-          echo "#### 📚 Layer Analysis" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          docker history zx8086/capellaql:latest --format "table {{.CreatedBy}}\t{{.Size}}\t{{.Comment}}" 2>/dev/null || echo "Layer history not available"
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Build Performance Metrics
-          echo "#### 📈 Build Performance" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "Start Time: $(date -d @$BUILD_START_TIME +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "End Time: $(date -d @$BUILD_END_TIME +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "Duration: ${BUILD_DURATION}s" >> $GITHUB_STEP_SUMMARY
-          echo "Average Layer Build Time: $(( BUILD_DURATION / (CACHE_HITS + CACHE_MISSES) ))s" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Resource Usage (if available)
-          if docker stats --no-stream >/dev/null 2>&1; then
-            echo "#### 🔋 Resource Usage" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" 2>/dev/null || echo "Resource usage stats not available"
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Build Cache Analysis
-          echo "#### 🔍 Cache Analysis" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "Cache Hit Rate: ${CACHE_RATIO}%" >> $GITHUB_STEP_SUMMARY
-          echo "Layers Reused: ${CACHE_HITS}" >> $GITHUB_STEP_SUMMARY
-          echo "Layers Rebuilt: ${CACHE_MISSES}" >> $GITHUB_STEP_SUMMARY
-          echo "Cache Efficiency Score: $(( (CACHE_HITS * 100) / (CACHE_HITS + CACHE_MISSES) ))/100" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Add build logging to capture detailed metrics
-          echo "#### 📝 Build Logs Analysis" >> $GITHUB_STEP_SUMMARY
-          if [ -f "buildx.log" ]; then
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            grep -E "time=|cache|digest" buildx.log | tail -n 10 >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "No detailed build logs available" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Recommendation based on cache performance
-          echo "#### 💡 Build Optimization Recommendations" >> $GITHUB_STEP_SUMMARY
-          if [ $CACHE_RATIO -lt 50 ]; then
-            echo "- ⚠️ Low cache hit ratio detected. Consider:" >> $GITHUB_STEP_SUMMARY
-            echo "  - Reviewing Dockerfile layer ordering" >> $GITHUB_STEP_SUMMARY
-            echo "  - Implementing better cache strategies" >> $GITHUB_STEP_SUMMARY
-            echo "  - Checking for unnecessary cache invalidation" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ Build cache is performing well with ${CACHE_RATIO}% hit rate" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Environment Information
-          echo "#### 🌍 Environment Details" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔰 Node Environment: production" >> $GITHUB_STEP_SUMMARY
-          echo "- 📍 Deployment Environment: ${DEPLOYMENT_ENVIRONMENT:-development}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🌐 Base URL: ${BASE_URL:-http://localhost}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🚪 Port: ${PORT:-4000}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📝 Log Level: ${LOG_LEVEL:-info}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔄 OpenTelemetry: ${ENABLE_OPENTELEMETRY:-false}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 File Logging: ${ENABLE_FILE_LOGGING:-false}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Build Args
-          echo "#### 🏗️ Build Arguments" >> $GITHUB_STEP_SUMMARY
-          echo "- 📋 Build Version: ${{ github.ref_name || '0.0.1' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔄 Commit Hash: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📅 Build Date: ${{ env.BUILD_TIMESTAMP }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📝 Source Maps: Enabled" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Cache Information
-          echo "#### 💾 Cache Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- 📥 Cache From: type=registry,ref=zx8086/capellaql:buildcache" >> $GITHUB_STEP_SUMMARY
-          echo "- 📤 Cache To: type=registry,ref=zx8086/capellaql:buildcache,mode=max" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Build Status and Timing
-          echo "#### ⚙️ Build Statistics" >> $GITHUB_STEP_SUMMARY
-          BUILD_START_TIME=$(date -d "${{ env.BUILD_TIMESTAMP }}" +%s)
-          BUILD_END_TIME=$(date +%s)
-          BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
-
-          echo "- ⏱️ Total Duration: ${BUILD_DURATION}s" >> $GITHUB_STEP_SUMMARY
-          echo "- 🚀 Start Time: ${{ env.BUILD_TIMESTAMP }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🏁 End Time: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_STEP_SUMMARY
-
-          if [ -f "buildx.log" ]; then
-            BUILD_DURATION=$(grep "duration:" buildx.log | awk '{print $2}')
-            CACHE_HITS=$(grep "cache hits:" buildx.log | awk '{print $3}')
-            echo "- 🎯 Cache Hits: ${CACHE_HITS:-0}" >> $GITHUB_STEP_SUMMARY
-            echo "- 🏗️ Build Duration: ${BUILD_DURATION:-N/A}" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Container Status
-          echo "#### 🐳 Container Status" >> $GITHUB_STEP_SUMMARY
-          if docker ps | grep app-test >/dev/null 2>&1; then
-            CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' app-test)
-            CONTAINER_HEALTH=$(docker inspect --format='{{.State.Health.Status}}' app-test 2>/dev/null || echo "N/A")
-            CONTAINER_STARTED=$(docker inspect --format='{{.State.StartedAt}}' app-test)
-            echo "- ✅ Status: ${CONTAINER_STATUS}" >> $GITHUB_STEP_SUMMARY
-            echo "- 🏥 Health: ${CONTAINER_HEALTH}" >> $GITHUB_STEP_SUMMARY
-            echo "- 🕒 Started: ${CONTAINER_STARTED}" >> $GITHUB_STEP_SUMMARY
-
-            # Add container resource usage
-            CONTAINER_STATS=$(docker stats app-test --no-stream --format "{{.CPUPerc}},{{.MemUsage}},{{.NetIO}},{{.BlockIO}}")
-            IFS=',' read -r CPU MEM NET BLOCK <<< "$CONTAINER_STATS"
-            echo "- 📊 Resource Usage:" >> $GITHUB_STEP_SUMMARY
-            echo "  - CPU: ${CPU}" >> $GITHUB_STEP_SUMMARY
-            echo "  - Memory: ${MEM}" >> $GITHUB_STEP_SUMMARY
-            echo "  - Network I/O: ${NET}" >> $GITHUB_STEP_SUMMARY
-            echo "  - Block I/O: ${BLOCK}" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Image Details
-          echo "#### 📦 Image Details" >> $GITHUB_STEP_SUMMARY
-          if docker image inspect zx8086/capellaql:latest >/dev/null 2>&1; then
-            IMAGE_SIZE=$(docker image inspect zx8086/capellaql:latest --format='{{.Size}}')
-            IMAGE_SIZE_MB=$((IMAGE_SIZE/1024/1024))
-            LAYER_COUNT=$(docker image inspect zx8086/capellaql:latest --format='{{len .RootFS.Layers}}')
-            CREATED=$(docker image inspect zx8086/capellaql:latest --format='{{.Created}}')
-
-            echo "- 📦 Size: ${IMAGE_SIZE_MB}MB" >> $GITHUB_STEP_SUMMARY
-            echo "- 📚 Layers: ${LAYER_COUNT}" >> $GITHUB_STEP_SUMMARY
-            echo "- 🔄 Created: ${CREATED}" >> $GITHUB_STEP_SUMMARY
-            echo "- 🏗️ Architecture: $(docker image inspect zx8086/capellaql:latest --format='{{.Os}}/{{.Architecture}}')" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Security Scan Results
-          echo "#### 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          if [ -f "snyk-docker.sarif" ]; then
+            # Security Scan Results (combined)
+            echo ""
+            echo "#### 🔒 Security Scan Results"
+            if [ -f "snyk-docker.sarif" ]; then
               VULN_COUNT=$(grep -c "issue" snyk-docker.sarif || echo "0")
-              CRITICAL_VULN_COUNT=$(grep -c '"level":"critical"' snyk-docker.sarif || echo "0")
-              HIGH_VULN_COUNT=$(grep -c '"level":"high"' snyk-docker.sarif || echo "0")
-              MEDIUM_VULN_COUNT=$(grep -c '"level":"medium"' snyk-docker.sarif || echo "0")
-              LOW_VULN_COUNT=$(grep -c '"level":"low"' snyk-docker.sarif || echo "0")
+              CRITICAL_COUNT=$(grep -c '"level":"critical"' snyk-docker.sarif || echo "0")
+              HIGH_COUNT=$(grep -c '"level":"high"' snyk-docker.sarif || echo "0")
+              MEDIUM_COUNT=$(grep -c '"level":"medium"' snyk-docker.sarif || echo "0")
+              LOW_COUNT=$(grep -c '"level":"low"' snyk-docker.sarif || echo "0")
 
-              echo "##### 🛡️ Docker Image Vulnerabilities" >> $GITHUB_STEP_SUMMARY
-              echo "- 💀 Critical: ${CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- ⚠️ High: ${HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- ⚡ Medium: ${MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- ℹ️ Low: ${LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- 📊 Total: ${VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-          else
-              echo "- ℹ️ No Docker image vulnerability scan results available" >> $GITHUB_STEP_SUMMARY
-          fi
+              echo "##### 🛡️ Container Vulnerabilities"
+              echo "- 💀 Critical: ${CRITICAL_COUNT}"
+              echo "- ⚠️ High: ${HIGH_COUNT}"
+              echo "- ⚡ Medium: ${MEDIUM_COUNT}"
+              echo "- ℹ️ Low: ${LOW_COUNT}"
+              echo "- 📊 Total: ${VULN_COUNT}"
+            fi
 
-          if [ -f "snyk.sarif" ]; then
+            # Code Vulnerabilities
+            if [ -f "snyk.sarif" ]; then
               CODE_VULN_COUNT=$(grep -c "issue" snyk.sarif || echo "0")
-              CODE_CRITICAL_VULN_COUNT=$(grep -c '"level":"critical"' snyk.sarif || echo "0")
-              CODE_HIGH_VULN_COUNT=$(grep -c '"level":"high"' snyk.sarif || echo "0")
-              CODE_MEDIUM_VULN_COUNT=$(grep -c '"level":"medium"' snyk.sarif || echo "0")
-              CODE_LOW_VULN_COUNT=$(grep -c '"level":"low"' snyk.sarif || echo "0")
+              CODE_CRITICAL_COUNT=$(grep -c '"level":"critical"' snyk.sarif || echo "0")
+              CODE_HIGH_COUNT=$(grep -c '"level":"high"' snyk.sarif || echo "0")
+              CODE_MEDIUM_COUNT=$(grep -c '"level":"medium"' snyk.sarif || echo "0")
+              CODE_LOW_COUNT=$(grep -c '"level":"low"' snyk.sarif || echo "0")
 
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "##### 🔍 Code Vulnerabilities" >> $GITHUB_STEP_SUMMARY
-              echo "- 💀 Critical: ${CODE_CRITICAL_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- ⚠️ High: ${CODE_HIGH_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- ⚡ Medium: ${CODE_MEDIUM_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- ℹ️ Low: ${CODE_LOW_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-              echo "- 📊 Total: ${CODE_VULN_COUNT}" >> $GITHUB_STEP_SUMMARY
-          else
-              echo "- ℹ️ No code vulnerability scan results available" >> $GITHUB_STEP_SUMMARY
-          fi
+              echo ""
+              echo "##### 🔍 Code Vulnerabilities"
+              echo "- 💀 Critical: ${CODE_CRITICAL_COUNT}"
+              echo "- ⚠️ High: ${CODE_HIGH_COUNT}"
+              echo "- ⚡ Medium: ${CODE_MEDIUM_COUNT}"
+              echo "- ℹ️ Low: ${CODE_LOW_COUNT}"
+              echo "- 📊 Total: ${CODE_VULN_COUNT}"
+            fi
 
-          # Additional Security Information
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "##### 🔐 Security Configurations" >> $GITHUB_STEP_SUMMARY
-          echo "- 🛡️ Snyk Severity Threshold: high" >> $GITHUB_STEP_SUMMARY
-          echo "- 📝 Scan Type: Container & Code" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔄 Continuous Monitoring: $([ "${{ github.ref }}" == "refs/heads/master" ] && echo "Enabled" || echo "Disabled")" >> $GITHUB_STEP_SUMMARY
+            # Environment Information
+            echo ""
+            echo "#### 🌍 Environment Details"
+            echo "- 🔰 Node Environment: production"
+            echo "- 📍 Deployment: ${DEPLOYMENT_ENVIRONMENT:-development}"
+            echo "- 🌐 Base URL: ${BASE_URL:-http://localhost}"
+            echo "- 🚪 Port: ${PORT:-4000}"
+            echo "- 📝 Log Level: ${LOG_LEVEL:-info}"
+            echo "- 🔄 OpenTelemetry: ${ENABLE_OPENTELEMETRY:-false}"
+            echo "- 📊 File Logging: ${ENABLE_FILE_LOGGING:-false}"
 
-          # Security Recommendations
-          if [ $((HIGH_VULN_COUNT + CODE_HIGH_VULN_COUNT)) -gt 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ **Security Recommendations**" >> $GITHUB_STEP_SUMMARY
-            echo "- High severity vulnerabilities detected. Review security scan reports." >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+            # Build Configuration
+            echo ""
+            echo "#### ⚙️ Build Configuration"
+            echo "- 📋 Version: ${{ github.ref_name || '0.0.1' }}"
+            echo "- 🔄 Commit: ${GITHUB_SHA}"
+            echo "- 📅 Date: ${BUILD_TIMESTAMP}"
+            echo "- 🛠️ Workflow: ${GITHUB_WORKFLOW}"
+            echo "- 👤 Actor: ${GITHUB_ACTOR}"
+            echo "- 🌿 Branch: ${GITHUB_REF_NAME}"
 
-          # Build Record
-          echo "#### 📋 Build Record" >> $GITHUB_STEP_SUMMARY
-          echo "- 🆔 Build ID: ${GITHUB_RUN_ID}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📁 Repository: ${GITHUB_REPOSITORY}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔄 Workflow: ${GITHUB_WORKFLOW}" >> $GITHUB_STEP_SUMMARY
-          echo "- 👤 Triggered by: ${GITHUB_ACTOR}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🌿 Branch: ${GITHUB_REF_NAME}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📅 Run Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+            # Build Artifacts
+            echo ""
+            echo "#### 📦 Artifacts"
+            echo "- Build Record: \`docker-build-records/zx8086-capellaql-${GITHUB_SHA::8}.dockerbuild\`"
+            echo "- SBOM: Available in image attestations"
+            echo "- Provenance: Included in image metadata"
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### 📥 Docker Build Record Download" >> $GITHUB_STEP_SUMMARY
-          echo "Download the build record to view detailed build information in Docker Desktop:" >> $GITHUB_STEP_SUMMARY
-          echo "1. Go to the Actions tab" >> $GITHUB_STEP_SUMMARY
-          echo "2. Select this workflow run" >> $GITHUB_STEP_SUMMARY
-          echo "3. Download the \`docker-build-records\` artifact" >> $GITHUB_STEP_SUMMARY
-          echo "4. Import the .dockerbuild file into Docker Desktop's Builds view" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+            # Optimization Recommendations
+            echo ""
+            echo "#### 💡 Build Optimization Recommendations"
+            if [ $CACHE_RATIO -lt 50 ]; then
+              echo "⚠️ Low cache hit ratio detected. Consider:"
+              echo "- Reviewing Dockerfile layer ordering"
+              echo "- Implementing better cache strategies"
+              echo "- Checking for unnecessary cache invalidation"
+            else
+              echo "✅ Build cache is performing well with ${CACHE_RATIO}% hit rate"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
 
       # Enhanced cleanup with workspace cleaning
       - name: Cleanup
@@ -692,10 +643,11 @@ jobs:
         run: |
           rm -f .env
           rm -f snyk.sarif snyk-docker.sarif
+          rm -rf /tmp/.buildx-cache
+          docker container rm -f app-test || true
           docker image prune -f
           docker volume prune -f
           docker builder prune -a -f
-          # Additional workspace cleanup
           rm -rf node_modules
           rm -rf .gradle
           rm -rf build

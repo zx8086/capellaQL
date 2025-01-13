@@ -1,36 +1,11 @@
-# Dockerfile
-
-# Use a more lightweight base image
 # syntax=docker/dockerfile:1.4
 
+# Base stage
 FROM oven/bun:canary-alpine AS base
 
 ARG BUILD_DATE
 ARG BUILD_VERSION
 ARG COMMIT_HASH
-
-# Standardized OCI labels
-LABEL org.opencontainers.image.title="capellaql"
-LABEL org.opencontainers.image.description="CapellaQL GraphQL Service"
-LABEL org.opencontainers.image.version="2.0.0"
-LABEL org.opencontainers.image.created="${BUILD_DATE}"
-LABEL org.opencontainers.image.version="${BUILD_VERSION}"
-LABEL org.opencontainers.image.revision="${COMMIT_HASH}"
-LABEL org.opencontainers.image.authors="Simon Owusu <simonowusupvh@gmail.com>"
-LABEL org.opencontainers.image.vendor="zx8086"
-LABEL org.opencontainers.image.licenses="MIT"
-LABEL org.opencontainers.image.url="https://github.com/zx8086/capellaql"
-LABEL org.opencontainers.image.source="https://github.com/zx8086/capellaql"
-LABEL org.opencontainers.image.documentation="https://github.com/zx8086/capellaql/README.md"
-LABEL org.opencontainers.image.base.name="oven/bun:canary-alpine"
-LABEL org.opencontainers.image.source.repository="github.com/zx8086/capellaql"
-LABEL org.opencontainers.image.source.branch="${GITHUB_REF_NAME:-master}"
-LABEL org.opencontainers.image.source.commit="${COMMIT_HASH}"
-
-# Custom labels (if needed)
-LABEL com.capellaql.maintainer="Simon Owusu <simonowusupvh@gmail.com>"
-LABEL com.capellaql.release-date="${BUILD_DATE}"
-LABEL com.capellaql.version.is-production="true"
 
 # Set common environment variables
 ENV CN_ROOT=/usr/src/app \
@@ -38,41 +13,38 @@ ENV CN_ROOT=/usr/src/app \
 
 WORKDIR /usr/src/app
 
-# Create necessary directories with proper permissions
+# Create directories (move to respective stages where needed)
 RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache /usr/src/app/.sourcemaps && \
     chown -R bun:bun /usr/src/app
 
-# Install dependencies stage
+# Dependencies stage - Optimized for caching
 FROM base AS deps
 
-# Copy package files
+# Copy only files needed for installation
 COPY --chown=bun:bun package.json bun.lockb ./
 
-# Install dependencies
+# Install dependencies with improved caching
 RUN --mount=type=cache,target=/root/.bun \
-    bun install --frozen-lockfile
+    bun install --frozen-lockfile && \
+    # Ensure node_modules exists and is owned by bun
+    mkdir -p node_modules && \
+    chown -R bun:bun node_modules
 
 # Development stage
 FROM deps AS development
 ENV NODE_ENV=development
+
+# Copy source files after dependencies for better caching
 COPY --chown=bun:bun . .
-RUN bun install
 CMD ["bun", "run", "dev"]
 
-# Final release stage
-FROM deps AS release
+# Build stage
+FROM deps AS builder
 
-# Set production environment
-ENV NODE_ENV=production \
-    ENABLE_OPENTELEMETRY=true
-
-# Copy source files with proper ownership
+# Copy source files
 COPY --chown=bun:bun . .
 
-# Install dependencies again to ensure they're available for the build
-RUN bun install --production
-
-# Add build step to generate source maps
+# Build the application
 RUN set -e; \
     echo "Building application..." && \
     bun build ./src/index.ts \
@@ -82,36 +54,74 @@ RUN set -e; \
     --external dns \
     --external bun \
     --manifest && \
-    echo "Build output contents:" && \
-    ls -la /usr/src/app/dist/ && \
-    echo "Creating maps directory..." && \
-    mkdir -p /usr/src/app/dist/maps && \
-    echo "Looking for source maps..." && \
-    if find /usr/src/app/dist -name "*.map" -exec mv {} /usr/src/app/dist/maps/ \; ; then \
-    echo "Source maps moved successfully"; \
-    else \
-    echo "No source maps found to move"; \
-    fi && \
-    echo "Build process completed"
+    # Create and populate maps directory
+    mkdir -p dist/maps && \
+    find dist -name "*.map" -exec mv {} dist/maps/ \; || true
 
-# Set runtime environment variables
-ENV BASE_URL="" PORT="" LOG_LEVEL="" LOG_MAX_SIZE="" LOG_MAX_FILES="" \
-    YOGA_RESPONSE_CACHE_TTL="" COUCHBASE_URL="" COUCHBASE_USERNAME="" \
-    COUCHBASE_BUCKET="" COUCHBASE_SCOPE="" COUCHBASE_COLLECTION="" \
-    SERVICE_NAME="" SERVICE_VERSION="" DEPLOYMENT_ENVIRONMENT="" \
-    TRACES_ENDPOINT="" METRICS_ENDPOINT="" LOGS_ENDPOINT="" \
-    METRIC_READER_INTERVAL="" CONSOLE_METRIC_READER_INTERVAL="" BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS="" \
-    ENABLE_FILE_LOGGING="" SUMMARY_LOG_INTERVAL="" ALLOWED_ORIGINS="" \
+# Final release stage
+FROM base AS release
+
+# Copy only necessary files from previous stages
+COPY --chown=bun:bun package.json bun.lockb ./
+RUN --mount=type=cache,target=/root/.bun \
+    bun install --production --frozen-lockfile
+
+# Copy build artifacts
+COPY --chown=bun:bun --from=builder /usr/src/app/dist ./dist
+
+# Add labels in final stage
+LABEL org.opencontainers.image.title="capellaql" \
+    org.opencontainers.image.description="CapellaQL GraphQL Service" \
+    org.opencontainers.image.version="2.0.0" \
+    org.opencontainers.image.created="${BUILD_DATE}" \
+    org.opencontainers.image.version="${BUILD_VERSION}" \
+    org.opencontainers.image.revision="${COMMIT_HASH}" \
+    org.opencontainers.image.authors="Simon Owusu <simonowusupvh@gmail.com>" \
+    org.opencontainers.image.vendor="zx8086" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.url="https://github.com/zx8086/capellaql" \
+    org.opencontainers.image.source="https://github.com/zx8086/capellaql" \
+    org.opencontainers.image.documentation="https://github.com/zx8086/capellaql/README.md" \
+    org.opencontainers.image.base.name="oven/bun:canary-alpine" \
+    org.opencontainers.image.source.repository="github.com/zx8086/capellaql" \
+    org.opencontainers.image.source.branch="${GITHUB_REF_NAME:-master}" \
+    org.opencontainers.image.source.commit="${COMMIT_HASH}" \
+    com.capellaql.maintainer="Simon Owusu <simonowusupvh@gmail.com>" \
+    com.capellaql.release-date="${BUILD_DATE}" \
+    com.capellaql.version.is-production="true"
+
+# Set production environment variables
+ENV NODE_ENV=production \
+    ENABLE_OPENTELEMETRY=true \
     SOURCE_MAP_SUPPORT=true \
     PRESERVE_SOURCE_MAPS=true
 
-# Set ownership of app directory to bun user
-RUN chown -R bun:bun /usr/src/app
+# Set runtime environment variables
+ENV BASE_URL="" \
+    PORT="" \
+    LOG_LEVEL="" \
+    LOG_MAX_SIZE="" \
+    LOG_MAX_FILES="" \
+    YOGA_RESPONSE_CACHE_TTL="" \
+    COUCHBASE_URL="" \
+    COUCHBASE_USERNAME="" \
+    COUCHBASE_BUCKET="" \
+    COUCHBASE_SCOPE="" \
+    COUCHBASE_COLLECTION="" \
+    SERVICE_NAME="" \
+    SERVICE_VERSION="" \
+    DEPLOYMENT_ENVIRONMENT="" \
+    TRACES_ENDPOINT="" \
+    METRICS_ENDPOINT="" \
+    LOGS_ENDPOINT="" \
+    METRIC_READER_INTERVAL="" \
+    CONSOLE_METRIC_READER_INTERVAL="" \
+    BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS="" \
+    ENABLE_FILE_LOGGING="" \
+    SUMMARY_LOG_INTERVAL="" \
+    ALLOWED_ORIGINS=""
 
-# Switch back to non-root user
 USER bun
-
-# Expose GraphQL Port
 EXPOSE 4000/tcp
 
 CMD ["bun", "run", "start"]

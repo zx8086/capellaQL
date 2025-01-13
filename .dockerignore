@@ -73,3 +73,16 @@ logs
 # k6
 /test
 k6
+
+.git
+.github
+node_modules
+dist
+*.log
+
+*.md
+.gitignore
+
+coverage
+.nyc_output
+.DS_Store
