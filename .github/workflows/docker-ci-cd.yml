@@ -75,7 +75,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: zx8086/capellaql
+          images: docker.io/zx8086/capellaql
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=long
@@ -169,7 +169,6 @@ jobs:
           platforms: linux/arm64,linux/amd64
           provenance: true
           sbom: true
-          registry: docker.io
           cache-from: type=registry,ref=docker.io/zx8086/capellaql:buildcache
           cache-to: type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
@@ -355,9 +354,9 @@ jobs:
         with:
           context: .
           load: true
-          tags: zx8086/capellaql:latest
+          tags: docker.io/zx8086/capellaql:latest
           platforms: linux/arm64
-          cache-from: type=registry,ref=zx8086/capellaql:buildcache
+          cache-from: type=registry,ref=docker.io/zx8086/capellaql:buildcache
           build-args: |
             NODE_ENV=production
             BUILD_VERSION=${{ github.ref_name || '2.0.0' }}
