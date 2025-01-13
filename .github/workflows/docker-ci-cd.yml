@@ -134,10 +134,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           version: latest
-          buildkitd-flags: --debug
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
           driver: cloud
           endpoint: "zx8086/cldbuild"
           install: true
