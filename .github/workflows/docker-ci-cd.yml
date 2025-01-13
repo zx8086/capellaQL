@@ -147,14 +147,6 @@ jobs:
           install: true
           platforms: linux/arm64,linux/amd64
 
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-
       - name: Warm up Docker cache
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
@@ -163,11 +155,8 @@ jobs:
           push: false
           load: false
           platforms: linux/arm64,linux/amd64
-          cache-from: |
-            type=registry,ref=zx8086/capellaql:buildcache
-            type=gha,scope=${{ github.workflow }}
-          cache-to: |
-            type=gha,mode=max,scope=${{ github.workflow }}
+          cache-from: type=registry,ref=zx8086/capellaql:buildcache
+          cache-to: type=registry,ref=zx8086/capellaql:buildcache,mode=max
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -368,10 +357,7 @@ jobs:
           load: true
           tags: zx8086/capellaql:latest
           platforms: linux/arm64
-          cache-from: |
-            type=registry,ref=zx8086/capellaql:buildcache
-            type=gha,scope=${{ github.workflow }}
-            type=local,src=/tmp/.buildx-cache
+          cache-from: type=registry,ref=zx8086/capellaql:buildcache
           build-args: |
             NODE_ENV=production
             BUILD_VERSION=${{ github.ref_name || '2.0.0' }}
@@ -647,7 +633,6 @@ jobs:
         run: |
           rm -f .env
           rm -f snyk.sarif snyk-docker.sarif
-          rm -rf /tmp/.buildx-cache
           docker container rm -f app-test || true
           docker image prune -f
           docker volume prune -f
