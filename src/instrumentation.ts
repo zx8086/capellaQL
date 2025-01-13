@@ -44,15 +44,16 @@ import config from "./config";
 
 log("Staring Instrumentation............");
 
-const INSTRUMENTATION_ENABLED = (Bun.env["ENABLE_OPENTELEMETRY"] as string) === "true";
+const INSTRUMENTATION_ENABLED =
+  (Bun.env["ENABLE_OPENTELEMETRY"] as string) === "true";
 log("OpenTelemetry Instrumentation Status", { INSTRUMENTATION_ENABLED });
 
 log("OpenTelemetry Environment Variables", {
   ENABLE_OPENTELEMETRY: Bun.env["ENABLE_OPENTELEMETRY"],
-  PARSED_INSTRUMENTATION_ENABLED: INSTRUMENTATION_ENABLED
+  PARSED_INSTRUMENTATION_ENABLED: INSTRUMENTATION_ENABLED,
 });
 
-log("Parsed INSTRUMENTATION_ENABLED:", {INSTRUMENTATION_ENABLED});
+log("Parsed INSTRUMENTATION_ENABLED:", { INSTRUMENTATION_ENABLED });
 
 let sdk: NodeSDK | undefined;
 let meter: Meter | undefined;
@@ -115,25 +116,34 @@ async function initializeOpenTelemetry() {
 
       const resource = await createResource();
 
-      const traceExporter = new MonitoredOTLPTraceExporter({
-        url: config.openTelemetry.TRACES_ENDPOINT,
-        headers: { "Content-Type": "application/json" },
-        ...commonConfig,
-      }, exporterTimeout) as unknown as SpanExporter;
+      const traceExporter = new MonitoredOTLPTraceExporter(
+        {
+          url: config.openTelemetry.TRACES_ENDPOINT,
+          headers: { "Content-Type": "application/json" },
+          ...commonConfig,
+        },
+        exporterTimeout,
+      ) as unknown as SpanExporter;
 
-      const otlpMetricExporter = new MonitoredOTLPMetricExporter({
-        url: config.openTelemetry.METRICS_ENDPOINT,
-        headers: { "Content-Type": "application/json" },
-        ...commonConfig,
-      }, exporterTimeout) as unknown as PushMetricExporter;
+      const otlpMetricExporter = new MonitoredOTLPMetricExporter(
+        {
+          url: config.openTelemetry.METRICS_ENDPOINT,
+          headers: { "Content-Type": "application/json" },
+          ...commonConfig,
+        },
+        exporterTimeout,
+      ) as unknown as PushMetricExporter;
 
       log("Metric exporter created with timeout:", exporterTimeout);
 
-      const logExporter = new MonitoredOTLPLogExporter({
-        url: config.openTelemetry.LOGS_ENDPOINT,
-        headers: { "Content-Type": "application/json" },
-        ...commonConfig,
-      }, exporterTimeout) as unknown as LogRecordExporter;
+      const logExporter = new MonitoredOTLPLogExporter(
+        {
+          url: config.openTelemetry.LOGS_ENDPOINT,
+          headers: { "Content-Type": "application/json" },
+          ...commonConfig,
+        },
+        exporterTimeout,
+      ) as unknown as LogRecordExporter;
 
       log("Traces exporter created with config:", {
         url: config.openTelemetry.TRACES_ENDPOINT,
@@ -280,10 +290,7 @@ export function recordHttpRequest(method: string, route: string) {
     }
   } else {
     warn(`Skipped recording HTTP request: instrumentation disabled`);
-    warn(
-      "ENABLE_OPENTELEMETRY env var:",
-      Bun.env["ENABLE_OPENTELEMETRY"],
-    );
+    warn("ENABLE_OPENTELEMETRY env var:", Bun.env["ENABLE_OPENTELEMETRY"]);
     warn("INSTRUMENTATION_ENABLED:", INSTRUMENTATION_ENABLED);
   }
 }
