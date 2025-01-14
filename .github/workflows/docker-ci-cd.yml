@@ -5,6 +5,8 @@ on:
     branches: ["master"]
   pull_request:
     branches: ["master"]
+  schedule:
+    - cron: "0 0 * * 0"
 
 permissions:
   contents: read
@@ -17,10 +19,19 @@ env:
   BUILDX_NO_DEFAULT_LOAD: true
   BUILDKIT_INLINE_CACHE: 1
   BUILDX_CACHE_TTL: "168h"
+  BUILDKIT_PROGRESS: plain
+  BUILDKIT_STEP_LOG_MAX_SIZE: "10000000"
+  BUILDKIT_STEP_LOG_MAX_SPEED: "10000000"
+  BUILDKIT_CACHE_MOUNT_NS: "buildkit-cache"
 
 jobs:
   build-and-deploy:
     runs-on: self-hosted
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+      fail-fast: false
+      max-parallel: 2
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +39,9 @@ jobs:
       # Initial Setup
       - name: Set build timestamp
         id: timestamp
-        run: echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+        run: |
+          echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+          echo "BUILD_START_TIME=$(date +%s)" >> $GITHUB_ENV
 
       - name: Create .env file
         run: |
@@ -91,17 +104,12 @@ jobs:
           path: |
             ~/.bun/install/cache
             node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+            .build-cache
+            dist
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json', 'tsconfig.json') }}
           restore-keys: |
-            ${{ runner.os }}-bun-- name: Cache Bun dependencies
-              uses: actions/cache@v3
-              with:
-                path: |
-                  ~/.bun/install/cache
-                  node_modules
-                key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
-                restore-keys: |
-                  ${{ runner.os }}-bun-
+            ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}-
+            ${{ runner.os }}-bun-
 
       - name: Install dependencies and run post-install scripts
         run: |
@@ -148,17 +156,27 @@ jobs:
           endpoint: "zx8086/cldbuild"
           install: true
           platforms: linux/arm64,linux/amd64
+          buildkitd-flags: --debug
+          config-inline: |
+            [worker.oci]
+              max-parallelism = 4
+              gc = true
+              gckeepstorage = 20000
 
-      - name: Warm up Docker cache
+      - name: Prime BuildKit cache
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
           load: false
-          platforms: linux/arm64,linux/amd64
-          cache-from: type=registry,ref=zx8086/capellaql:buildcache
-          cache-to: type=registry,ref=zx8086/capellaql:buildcache,mode=max
+          platforms: ${{ matrix.platform }}
+          cache-from: |
+            type=registry,ref=docker.io/zx8086/capellaql:buildcache
+            type=gha,scope=${{ github.workflow }}
+          cache-to: |
+            type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
+            type=gha,mode=max,scope=${{ github.workflow }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -167,17 +185,22 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/arm64,linux/amd64
+          platforms: ${{ matrix.platform }}
           provenance: true
           sbom: true
           cache-from: |
             type=registry,ref=docker.io/zx8086/capellaql:buildcache
             type=registry,ref=docker.io/zx8086/capellaql:latest
-          cache-to: type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
+            type=gha,scope=${{ github.workflow }}
+          cache-to: |
+            type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
+            type=gha,mode=max,scope=${{ github.workflow }}
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
+          build-context: .
           build-args: |
             BUILDKIT_INLINE_CACHE=1
             DOCKER_BUILDKIT=1
+            BUILDKIT_PROGRESS=plain
             NODE_ENV=production
             BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
             BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
@@ -206,18 +229,6 @@ jobs:
             BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=${{ vars.BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS }}
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
-
-      # Add a step to prime the cache
-      - name: Prime BuildKit cache
-        if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          load: false
-          cache-from: type=registry,ref=docker.io/zx8086/capellaql:buildcache
-          cache-to: type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
-          platforms: linux/arm64,linux/amd64
 
       - name: Capture Build Output
         run: |
@@ -370,7 +381,7 @@ jobs:
           context: .
           load: true
           tags: docker.io/zx8086/capellaql:latest
-          platforms: linux/arm64
+          platforms: ${{ matrix.platform }}
           cache-from: type=registry,ref=docker.io/zx8086/capellaql:buildcache
           build-args: |
             NODE_ENV=production
@@ -488,6 +499,9 @@ jobs:
         with:
           sarif_file: snyk-docker.sarif
           category: snyk-docker
+
+      - name: Set build end time
+        run: echo "BUILD_END_TIME=$(date +%s)" >> $GITHUB_ENV
 
       # Optimized Build Summary
       - name: Docker Build Summary
@@ -639,6 +653,16 @@ jobs:
               echo "✅ Build cache is performing well with ${CACHE_RATIO}% hit rate"
             fi
           } >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup old caches
+        if: github.event_name == 'schedule'
+        run: |
+          docker buildx prune --filter until=168h --force
+          docker builder prune --filter until=168h --force
+          gh extension install actions/gh-actions-cache
+          gh actions-cache delete match -R ${{ github.repository }} "bun-" --confirm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Enhanced cleanup with workspace cleaning
       - name: Cleanup
