@@ -1,3 +1,4 @@
+# .github/actions/setup-environment/action.yml
 name: "Setup Environment"
 description: "Sets up common actions and environment"
 
@@ -34,8 +35,6 @@ runs:
         endpoint: "zx8086/cldbuild"
         install: true
         platforms: linux/arm64,linux/amd64
-        buildkitd-flags: --debug
-        # Remove config-inline for cloud driver
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
