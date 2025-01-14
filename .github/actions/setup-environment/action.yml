@@ -59,12 +59,17 @@ runs:
           image=moby/buildkit:latest
           network=host
         buildkitd-flags: --debug
-        config: |
+        buildkitd-config: |
           [worker.oci]
-            max-parallelism = 2
+          max-parallelism=2
+          gc=true
           [worker.containerd]
-            gc = true
-            gc-keepstorage = 20GB
+          gc=true
+          gc-keepstorage=20GB
+          [registry."docker.io"]
+          mirrors=["mirror.gcr.io"]
+          [registry."docker.io".mirror]
+          insecure=false
         platforms: linux/arm64,linux/amd64
 
     - name: Pre-fetch common actions
