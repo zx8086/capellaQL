@@ -23,6 +23,7 @@ FROM base AS deps
 
 # Copy package files separately for better cache utilization
 COPY --chown=bun:bun package.json bun.lockb ./
+COPY --chown=bun:bun tsconfig.json ./
 
 # Install production dependencies
 RUN --mount=type=cache,target=/root/.bun,sharing=locked \

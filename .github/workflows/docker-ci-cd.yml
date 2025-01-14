@@ -15,6 +15,8 @@ env:
   DOCKER_BUILDKIT: 1
   COMPOSE_DOCKER_CLI_BUILD: 1
   BUILDX_NO_DEFAULT_LOAD: true
+  BUILDKIT_INLINE_CACHE: 1
+  BUILDX_CACHE_TTL: "168h" # 1 week cache retention
   # BUILDX_EXPERIMENTAL: 1
   # DOCKER_CLI_EXPERIMENTAL: enabled
   # BUILDKIT_PROGRESS: plain
@@ -95,12 +97,21 @@ jobs:
 
       - name: Cache Bun dependencies
         uses: actions/cache@v3
-        continue-on-error: true
         with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
           restore-keys: |
-            ${{ runner.os }}-bun-
+            ${{ runner.os }}-bun-- name: Cache Bun dependencies
+              uses: actions/cache@v3
+              with:
+                path: |
+                  ~/.bun/install/cache
+                  node_modules
+                key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+                restore-keys: |
+                  ${{ runner.os }}-bun-
 
       - name: Install dependencies and run post-install scripts
         run: |
@@ -169,7 +180,9 @@ jobs:
           platforms: linux/arm64,linux/amd64
           provenance: true
           sbom: true
-          cache-from: type=registry,ref=docker.io/zx8086/capellaql:buildcache
+          cache-from: |
+            type=registry,ref=docker.io/zx8086/capellaql:buildcache
+            type=registry,ref=docker.io/zx8086/capellaql:latest
           cache-to: type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
           build-args: |
@@ -203,6 +216,18 @@ jobs:
             BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=${{ vars.BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS }}
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
+
+      # Add a step to prime the cache
+      - name: Prime BuildKit cache
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: false
+          cache-from: type=registry,ref=docker.io/zx8086/capellaql:buildcache
+          cache-to: type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
+          platforms: linux/arm64,linux/amd64
 
       - name: Capture Build Output
         run: |
