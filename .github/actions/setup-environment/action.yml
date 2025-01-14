@@ -40,6 +40,18 @@ runs:
         echo "BUILDKIT_STEP_LOG_MAX_SPEED=10000000" >> $GITHUB_ENV
         echo "BUILDKIT_CACHE_MOUNT_NS=buildkit-cache" >> $GITHUB_ENV
 
+    - name: Install verification tools
+      continue-on-error: true
+      shell: bash
+      run: |
+        # Install cosign for attestation verification
+        curl -Lo cosign https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+        chmod +x cosign
+        sudo mv cosign /usr/local/bin/
+
+        # Install syft for SBOM generation/verification
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
