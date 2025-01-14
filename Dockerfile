@@ -21,11 +21,10 @@ RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache /usr/src/ap
 # Dependencies stage - Optimized for caching
 FROM base AS deps
 
-# Copy package files separately for better cache utilization
-COPY --chown=bun:bun package.json bun.lockb ./
-COPY --chown=bun:bun tsconfig.json ./
+# Copy only package files needed for installation
+COPY --chown=bun:bun package.json bun.lockb tsconfig.json ./
 
-# Install production dependencies
+# Single RUN command for better caching
 RUN --mount=type=cache,target=/root/.bun,sharing=locked \
     bun install --frozen-lockfile --production && \
     mkdir -p node_modules && \
@@ -45,17 +44,13 @@ CMD ["bun", "run", "dev"]
 # Build stage
 FROM deps AS builder
 
-# Copy only necessary files for building
-COPY --chown=bun:bun tsconfig.json ./
+# Copy source files all at once
 COPY --chown=bun:bun src/ ./src/
+COPY --chown=bun:bun tsconfig.json ./
 
-# Create dist directory and ensure proper permissions
-RUN mkdir -p dist dist/maps && \
-    chown -R bun:bun dist
-
-# Build the application with caching
+# Combine mkdir and build operations
 RUN --mount=type=cache,target=/usr/src/app/.build \
-    set -ex && \
+    mkdir -p dist dist/maps && \
     bun build ./src/index.ts \
     --target=node \
     --outdir ./dist \
@@ -63,24 +58,21 @@ RUN --mount=type=cache,target=/usr/src/app/.build \
     --external dns \
     --external bun \
     --manifest && \
-    find dist -name "*.map" -exec mv {} dist/maps/ \; || true && \
-    ls -la dist  # Add this line to verify the contents
+    find dist -name "*.map" -exec mv {} dist/maps/ \; || true
 
 # Final release stage
 FROM base AS release
 
-# Copy package files first
+# Copy package files and install dependencies in one layer
 COPY --chown=bun:bun package.json bun.lockb ./
+RUN --mount=type=cache,target=/root/.bun,sharing=locked \
+    bun install --frozen-lockfile
 
-# Install ALL dependencies (including devDependencies) for building
-RUN bun install --frozen-lockfile
-
-# Copy all source files with proper ownership
+# Copy source files
 COPY --chown=bun:bun . .
 
-# Build the application in the release stage
-RUN set -e; \
-    echo "Building application..." && \
+# Combine build operations into a single layer
+RUN set -e && \
     bun build ./src/index.ts \
     --target=node \
     --outdir ./dist \
@@ -88,23 +80,10 @@ RUN set -e; \
     --external dns \
     --external bun \
     --manifest && \
-    echo "Build output contents:" && \
-    ls -la /usr/src/app/dist/ && \
-    echo "Creating maps directory..." && \
     mkdir -p /usr/src/app/dist/maps && \
-    echo "Looking for source maps..." && \
-    if find /usr/src/app/dist -name "*.map" -exec mv {} /usr/src/app/dist/maps/ \; ; then \
-    echo "Source maps moved successfully"; \
-    else \
-    echo "No source maps found to move"; \
-    fi && \
-    echo "Build process completed"
-
-# Clean up dev dependencies after build
-RUN bun install --frozen-lockfile --production
-
-# Ensure proper permissions
-RUN chown -R bun:bun .
+    find /usr/src/app/dist -name "*.map" -exec mv {} /usr/src/app/dist/maps/ \; || true && \
+    bun install --frozen-lockfile --production && \
+    chown -R bun:bun .
 
 # Set production environment variables
 ENV ENABLE_OPENTELEMETRY=true \

@@ -16,17 +16,7 @@ env:
   COMPOSE_DOCKER_CLI_BUILD: 1
   BUILDX_NO_DEFAULT_LOAD: true
   BUILDKIT_INLINE_CACHE: 1
-  BUILDX_CACHE_TTL: "168h" # 1 week cache retention
-  # BUILDX_EXPERIMENTAL: 1
-  # DOCKER_CLI_EXPERIMENTAL: enabled
-  # BUILDKIT_PROGRESS: plain
-  # DOCKER_BUILDKIT_CACHE: 1
-  # CACHE_FROM: type=registry,ref=zx8086/capellaql:buildcache
-  # CACHE_TO: type=registry,ref=zx8086/capellaql:buildcache,mode=max
-  # BUILDX_CACHE_TTL: "168h"
-  # BUILDX_MAX_PARALLEL: "4"
-  # BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
-  # BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
+  BUILDX_CACHE_TTL: "168h"
 
 jobs:
   build-and-deploy:
