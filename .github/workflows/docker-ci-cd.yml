@@ -198,6 +198,7 @@ jobs:
             PRESERVE_SOURCE_MAPS=true
 
       - name: Capture Build Output
+        continue-on-error: true
         run: |
           echo "::group::Docker Build Output"
           docker buildx build \
@@ -207,6 +208,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Process Build Log
+        continue-on-error: true
         if: always()
         run: |
           if [ -f "buildx.log" ]; then
@@ -290,6 +292,7 @@ jobs:
 
       # Generate build record during build
       - name: Generate Docker Build Record
+        continue-on-error: true
         if: success()
         run: |
           BUILD_RECORD_FILE="docker-build-records/zx8086-capellaql-${GITHUB_SHA::8}.dockerbuild"
@@ -333,6 +336,7 @@ jobs:
           EOF
 
       - name: Upload Build Record
+        continue-on-error: true
         if: success()
         uses: actions/upload-artifact@v4
         with:
