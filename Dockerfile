@@ -9,7 +9,8 @@ ARG COMMIT_HASH
 
 # Set common environment variables
 ENV CN_ROOT=/usr/src/app \
-    CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache
+    CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache \
+    NODE_ENV=production
 
 WORKDIR /usr/src/app
 
@@ -20,12 +21,12 @@ RUN mkdir -p /usr/src/app/logs /usr/src/app/deps/couchbase-cxx-cache /usr/src/ap
 # Dependencies stage - Optimized for caching
 FROM base AS deps
 
-# Copy only files needed for installation
+# Copy package files separately for better cache utilization
 COPY --chown=bun:bun package.json bun.lockb ./
 
-# Install dependencies with improved caching
+# Install production dependencies
 RUN --mount=type=cache,target=/root/.bun,sharing=locked \
-    bun install --frozen-lockfile && \
+    bun install --frozen-lockfile --production && \
     mkdir -p node_modules && \
     chown -R bun:bun node_modules
 
@@ -33,20 +34,27 @@ RUN --mount=type=cache,target=/root/.bun,sharing=locked \
 FROM deps AS development
 ENV NODE_ENV=development
 
-# Copy source files after dependencies for better caching
+# Install development dependencies
+RUN bun install --frozen-lockfile
+
+# Copy source files after dependencies
 COPY --chown=bun:bun . .
 CMD ["bun", "run", "dev"]
 
 # Build stage
 FROM deps AS builder
 
-# Copy source files
-COPY --chown=bun:bun . .
+# Copy only necessary files for building
+COPY --chown=bun:bun tsconfig.json ./
+COPY --chown=bun:bun src/ ./src/
 
-# Build the application
+# Create dist directory and ensure proper permissions
+RUN mkdir -p dist dist/maps && \
+    chown -R bun:bun dist
+
+# Build the application with caching
 RUN --mount=type=cache,target=/usr/src/app/.build \
-    set -ex; \
-    echo "Building application..." && \
+    set -ex && \
     bun build ./src/index.ts \
     --target=node \
     --outdir ./dist \
@@ -54,23 +62,22 @@ RUN --mount=type=cache,target=/usr/src/app/.build \
     --external dns \
     --external bun \
     --manifest && \
-    mkdir -p dist/maps && \
-    find dist -name "*.map" -exec mv {} dist/maps/ \; || true
+    find dist -name "*.map" -exec mv {} dist/maps/ \; || true && \
+    ls -la dist  # Add this line to verify the contents
 
 # Final release stage
-FROM deps AS release
+FROM base AS release
 
-# Set production environment
-ENV NODE_ENV=production \
-    ENABLE_OPENTELEMETRY=true
+# Copy package files first
+COPY --chown=bun:bun package.json bun.lockb ./
 
-# Copy source files with proper ownership
+# Install ALL dependencies (including devDependencies) for building
+RUN bun install --frozen-lockfile
+
+# Copy all source files with proper ownership
 COPY --chown=bun:bun . .
 
-# Install dependencies again to ensure they're available for the build
-RUN bun install --production
-
-# Add build step to generate source maps
+# Build the application in the release stage
 RUN set -e; \
     echo "Building application..." && \
     bun build ./src/index.ts \
@@ -92,6 +99,18 @@ RUN set -e; \
     fi && \
     echo "Build process completed"
 
+# Clean up dev dependencies after build
+RUN bun install --frozen-lockfile --production
+
+# Ensure proper permissions
+RUN chown -R bun:bun .
+
+# Set production environment variables
+ENV ENABLE_OPENTELEMETRY=true \
+    SOURCE_MAP_SUPPORT=true \
+    PRESERVE_SOURCE_MAPS=true \
+    NODE_ENV=production
+
 # Add labels in final stage
 LABEL org.opencontainers.image.title="capellaql" \
     org.opencontainers.image.description="CapellaQL GraphQL Service" \
@@ -112,12 +131,6 @@ LABEL org.opencontainers.image.title="capellaql" \
     com.capellaql.maintainer="Simon Owusu <simonowusupvh@gmail.com>" \
     com.capellaql.release-date="${BUILD_DATE}" \
     com.capellaql.version.is-production="true"
-
-# Set production environment variables
-ENV NODE_ENV=production \
-    ENABLE_OPENTELEMETRY=true \
-    SOURCE_MAP_SUPPORT=true \
-    PRESERVE_SOURCE_MAPS=true
 
 # Set runtime environment variables
 ENV BASE_URL="" \
@@ -147,7 +160,9 @@ ENV BASE_URL="" \
 USER bun
 EXPOSE 4000/tcp
 
+# Modify healthcheck to use the correct script
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD bun run healthcheck || exit 1
 
+# Use the script defined in package.json
 CMD ["bun", "run", "start"]
