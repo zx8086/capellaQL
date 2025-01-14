@@ -1,3 +1,5 @@
+# .github/actions/setup-environment/action.yml
+
 name: Docker CI/CD with Bun and Snyk
 
 on:
@@ -167,7 +169,6 @@ jobs:
             type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
             type=gha,mode=max,scope=${{ github.workflow }}
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
-          build-context: .
           build-args: |
             BUILDKIT_INLINE_CACHE=1
             DOCKER_BUILDKIT=1
