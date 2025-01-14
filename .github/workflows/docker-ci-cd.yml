@@ -13,17 +13,6 @@ permissions:
   security-events: write
   packages: write
 
-env:
-  DOCKER_BUILDKIT: 1
-  COMPOSE_DOCKER_CLI_BUILD: 1
-  BUILDX_NO_DEFAULT_LOAD: true
-  BUILDKIT_INLINE_CACHE: 1
-  BUILDX_CACHE_TTL: "168h"
-  BUILDKIT_PROGRESS: plain
-  BUILDKIT_STEP_LOG_MAX_SIZE: "10000000"
-  BUILDKIT_STEP_LOG_MAX_SPEED: "10000000"
-  BUILDKIT_CACHE_MOUNT_NS: "buildkit-cache"
-
 jobs:
   build-and-deploy:
     runs-on: self-hosted
@@ -35,6 +24,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-environment
 
       # Initial Setup
       - name: Set build timestamp
@@ -87,17 +79,6 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
 
-      # Platform and runtime setup
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
       - name: Cache Bun dependencies
         uses: actions/cache@v3
         with:
@@ -148,20 +129,6 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
           registry: docker.io
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: cloud
-          endpoint: "zx8086/cldbuild"
-          install: true
-          platforms: linux/arm64,linux/amd64
-          buildkitd-flags: --debug
-          config-inline: |
-            [worker.oci]
-              max-parallelism = 4
-              gc = true
-              gckeepstorage = 20000
 
       - name: Prime BuildKit cache
         if: github.event_name != 'pull_request'
