@@ -10,6 +10,10 @@ on:
   schedule:
     - cron: "0 0 * * 0"
 
+env:
+  ACTIONS_CACHE_DIR: /home/pi/actions-runner/_work/_cache
+  ACTIONS_RUNTIME_DIR: /home/pi/actions-runner/_work/_runtime
+
 permissions:
   contents: read
   security-events: write
@@ -29,6 +33,15 @@ jobs:
 
       - name: Setup Environment
         uses: ./.github/actions/setup-environment
+
+      - name: Warm up action cache
+        shell: bash
+        run: |
+          mkdir -p $ACTIONS_CACHE_DIR
+          mkdir -p $ACTIONS_RUNTIME_DIR
+          for dir in $ACTIONS_CACHE_DIR/* ; do
+            touch "$dir"  # Update access time
+          done
 
       # Initial Setup
       - name: Set build timestamp
@@ -634,14 +647,24 @@ jobs:
       - name: Cleanup old caches
         if: github.event_name == 'schedule'
         run: |
-          docker buildx prune --filter until=168h --force
-          docker builder prune --filter until=168h --force
+          find $ACTIONS_CACHE_DIR -type f -atime +7 -delete
+          find $ACTIONS_RUNTIME_DIR -type f -atime +7 -delete
           docker buildx prune --filter until=168h --force --keep-storage=20GB
           docker builder prune --filter until=168h --force --keep-storage=20GB
           gh extension install actions/gh-actions-cache
           gh actions-cache delete match -R ${{ github.repository }} "bun-" --confirm
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Debug cache
+        shell: bash
+        run: |
+          echo "Cache directory contents:"
+          ls -la $ACTIONS_CACHE_DIR
+          echo "Runtime directory contents:"
+          ls -la $ACTIONS_RUNTIME_DIR
+          echo "Actions directory contents:"
+          ls -la ~/actions-runner/_work/_actions
 
       # Enhanced cleanup with workspace cleaning
       - name: Cleanup
