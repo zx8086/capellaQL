@@ -9,8 +9,9 @@ runs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/github-actions
-        key: ${{ runner.os }}-actions-${{ hashFiles('**/.github/workflows/*.yml') }}
+        key: ${{ runner.os }}-actions-${{ github.workflow }}-${{ hashFiles('**/.github/workflows/*.yml') }}
         restore-keys: |
+          ${{ runner.os }}-actions-${{ github.workflow }}-
           ${{ runner.os }}-actions-
 
     - name: Set Environment Variables

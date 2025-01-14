@@ -83,6 +83,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
+            ${{ env.ACTIONS_CACHE_DIR }}/bun
             ~/.bun/install/cache
             node_modules
             .build-cache
@@ -140,7 +141,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           cache-from: |
             type=registry,ref=docker.io/zx8086/capellaql:buildcache
+            type=registry,ref=docker.io/zx8086/capellaql:latest
             type=gha,scope=${{ github.workflow }}
+            type=local,src=/tmp/.buildx-cache
           cache-to: |
             type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
             type=gha,mode=max,scope=${{ github.workflow }}
@@ -159,6 +162,7 @@ jobs:
             type=registry,ref=docker.io/zx8086/capellaql:buildcache
             type=registry,ref=docker.io/zx8086/capellaql:latest
             type=gha,scope=${{ github.workflow }}
+            type=local,src=/tmp/.buildx-cache
           cache-to: |
             type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
             type=gha,mode=max,scope=${{ github.workflow }}
@@ -476,6 +480,7 @@ jobs:
 
       # Optimized Build Summary
       - name: Docker Build Summary
+        continue-on-error: true
         if: always()
         run: |
           {
@@ -630,6 +635,8 @@ jobs:
         run: |
           docker buildx prune --filter until=168h --force
           docker builder prune --filter until=168h --force
+          docker buildx prune --filter until=168h --force --keep-storage=20GB
+          docker builder prune --filter until=168h --force --keep-storage=20GB
           gh extension install actions/gh-actions-cache
           gh actions-cache delete match -R ${{ github.repository }} "bun-" --confirm
         env:
