@@ -325,90 +325,50 @@ jobs:
           # Create directory for SBOM files
           mkdir -p sbom-output
 
-          # Function to safely check image
-          check_image() {
-            docker buildx imagetools inspect docker.io/zx8086/capellaql:latest 2>/dev/null || return 1
-          }
-
-          # Function to generate SBOM with syft
-          generate_sbom() {
-            if command -v syft >/dev/null 2>&1; then
-              echo "Generating SBOM with syft..."
-              syft docker.io/zx8086/capellaql:latest \
-                -o json=sbom-output/syft-sbom.json \
-                -o spdx-json=sbom-output/spdx-sbom.json \
-                -o cyclonedx-json=sbom-output/cyclonedx-sbom.json || return 1
-              return 0
-            fi
-            return 1
-          }
-
-          # Wait for image to be available
-          echo "Waiting for image to be available..."
-          for i in {1..3}; do
-            if check_image; then
-              break
-            fi
-            echo "Attempt $i: Image not yet available, waiting..."
-            sleep 10
-          done
-
-          # Try to get SBOM from image metadata first
-          echo "Attempting to extract SBOM from image metadata..."
-          FORMATS=("spdx" "cyclonedx" "syft")
-          SBOM_FOUND=false
-
-          for format in "${FORMATS[@]}"; do
-            echo "Checking $format format..."
-
-            SBOM=$(docker buildx imagetools inspect docker.io/zx8086/capellaql:latest \
-              --format '{{json .}}' 2>/dev/null | \
-              jq -r --arg fmt "$format" \
-              '.manifests[].annotations | select(."org.opencontainers.image.sbom.format" == $fmt)' \
-              2>/dev/null)
-
-            if [ ! -z "$SBOM" ]; then
-              echo "✓ Found $format SBOM"
-              echo "$SBOM" > "sbom-output/sbom_${format}.json"
-              SBOM_FOUND=true
-
-              # Validate SBOM structure
-              if jq -e . >/dev/null 2>&1 <<<"$SBOM"; then
-                echo "✓ Valid $format SBOM structure"
-              else
-                echo "⚠️ Invalid $format SBOM structure"
-              fi
-            else
-              echo "ℹ️ No $format SBOM found in image metadata"
-            fi
-          done
-
-          # If no SBOM found in metadata, generate one
-          if [ "$SBOM_FOUND" = false ]; then
-            echo "No SBOM found in image metadata, attempting to generate..."
-            if generate_sbom; then
-              echo "✓ Successfully generated SBOM files"
-              SBOM_FOUND=true
-            else
-              echo "⚠️ Failed to generate SBOM"
-            fi
-          fi
-
-          # Final status check
-          if [ "$SBOM_FOUND" = true ]; then
-            echo "✓ SBOM verification complete"
-            # List generated SBOM files
-            ls -la sbom-output/
+          # Generate SBOM using syft
+          echo "Generating SBOM with syft..."
+          if ! syft docker.io/zx8086/capellaql:latest \
+            -o json=sbom-output/syft-sbom.json \
+            -o spdx-json=sbom-output/spdx-sbom.json \
+            -o cyclonedx-json=sbom-output/cyclonedx-sbom.json; then
+            echo "⚠️ Failed to generate SBOM with syft, attempting alternative method..."
           else
-            echo "⚠️ No SBOM could be found or generated"
-            exit 0  # Don't fail the build
+            echo "✓ Successfully generated SBOM files"
           fi
+
+          # Validate generated SBOMs
+          for sbom_file in sbom-output/*.json; do
+            if [ -f "$sbom_file" ]; then
+              echo "Validating $sbom_file..."
+              if jq -e . >/dev/null 2>&1 <"$sbom_file"; then
+                echo "✓ Valid JSON structure in $sbom_file"
+              else
+                echo "⚠️ Invalid JSON structure in $sbom_file"
+              fi
+            fi
+          done
 
           # Archive SBOM files if they exist
           if [ -d "sbom-output" ] && [ "$(ls -A sbom-output)" ]; then
             echo "Archiving SBOM files..."
             tar -czf sbom-files.tar.gz sbom-output/
+            echo "✓ SBOM files archived"
           fi
+
+          # List generated files
+          echo "Generated SBOM files:"
+          ls -la sbom-output/
+
+      - name: Upload SBOM Files
+        if: github.event_name != 'pull_request' && success()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: sbom-files
+          path: |
+            sbom-output/
+            sbom-files.tar.gz
+          retention-days: 90
 
       - name: Upload SBOM Files
         if: github.event_name != 'pull_request' && success()

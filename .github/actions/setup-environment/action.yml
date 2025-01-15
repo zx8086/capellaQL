@@ -43,19 +43,17 @@ runs:
     - name: Install verification tools
       shell: bash
       run: |
-        # Create temporary directory for downloads
         mkdir -p ~/tmp
         cd ~/tmp
 
-        # Install cosign for attestation verification
+        # Install cosign
         curl -Lo cosign https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-arm64
         chmod +x cosign
         sudo mv cosign /usr/local/bin/
 
-        # Install syft for SBOM generation/verification
+        # Install syft
         curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh -s -- -b /usr/local/bin
 
-        # Cleanup
         cd - && rm -rf ~/tmp
 
     - name: Set up Docker Buildx
@@ -65,7 +63,7 @@ runs:
           image=moby/buildkit:latest
           network=host
         buildkitd-flags: --debug
-        config-inline: |
+        buildkitd-config-inline: |
           [worker.oci]
           max-parallelism = 2
           gc = true
