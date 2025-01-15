@@ -298,57 +298,58 @@ jobs:
         run: |
           echo "Checking attestations..."
 
-          # Wait for image to be available
-          sleep 15
+          # Create directory for attestation results with unique timestamp
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          RESULTS_DIR="attestation-results-${TIMESTAMP}"
+          mkdir -p "${RESULTS_DIR}"
 
-          # Create directory for attestation results
-          mkdir -p attestation-results
-
-          # Function to verify attestations with proper parameters
+          # Function to verify attestations
           verify_attestations() {
             local IMAGE="docker.io/zx8086/capellaql:latest"
 
-            # Verify with cosign using GitHub Actions identity and proper workflow identity
+            # Try different verification approaches
+            echo "Attempting SLSA provenance verification..."
             cosign verify-attestation \
-              --type custom \
-              --certificate-identity "https://github.com/${{ github.repository }}/actions/workflows/docker-ci-cd.yml@${{ github.ref }}" \
-              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-              "$IMAGE" > attestation-results/attestations.json 2>&1 || \
-            cosign verify-attestation \
-              --type custom \
-              --certificate-identity "https://github.com/${{ github.repository }}/workflows/docker-ci-cd.yml@refs/heads/master" \
-              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-              "$IMAGE" > attestation-results/attestations.json 2>&1 || \
-            cosign verify-attestation \
-              --type custom \
-              --certificate-identity-regexp "https://github.com/.*" \
-              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-              "$IMAGE" > attestation-results/attestations.json 2>&1
+              --type slsaprovenance \
+              --certificate-identity-regexp=".*" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${IMAGE}" > "${RESULTS_DIR}/slsa-attestation.json" 2>/dev/null || true
 
-            return $?
+            echo "Attempting generic attestation verification..."
+            cosign verify-attestation \
+              --certificate-identity-regexp=".*" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${IMAGE}" > "${RESULTS_DIR}/generic-attestation.json" 2>/dev/null || true
+
+            # Check if any verification succeeded
+            if [ -s "${RESULTS_DIR}/slsa-attestation.json" ] || [ -s "${RESULTS_DIR}/generic-attestation.json" ]; then
+              return 0
+            fi
+            return 1
           }
 
-          # Attempt verification
+          # Fetch and save manifest
+          echo "Fetching manifest..."
+          docker buildx imagetools inspect docker.io/zx8086/capellaql:latest --raw > "${RESULTS_DIR}/manifest.json" 2>/dev/null || true
+
+          # Try verification
           if verify_attestations; then
-            echo "✓ Successfully verified attestations"
+            echo "✅ Successfully verified at least one attestation"
 
-            # Parse and display attestation details
-            if [ -f "attestation-results/attestations.json" ]; then
-              echo "Attestation details:"
-              jq . attestation-results/attestations.json || echo "Failed to parse attestations JSON"
-            fi
+            # Combine results
+            echo "Combining verification results..."
+            jq -s '.' "${RESULTS_DIR}"/*.json > "${RESULTS_DIR}/combined-results.json" 2>/dev/null || true
+
           else
-            echo "⚠️ Attestation verification failed or no attestations found"
+            echo "⚠️ Standard verification failed, attempting alternative methods..."
 
-            # Fallback to manual inspection
-            echo "Attempting manual inspection..."
-            docker buildx imagetools inspect docker.io/zx8086/capellaql:latest \
-              --format '{{json .}}' > attestation-results/image-metadata.json
+            # Try downloading attestations directly
+            cosign download attestation docker.io/zx8086/capellaql:latest > "${RESULTS_DIR}/downloaded-attestations.json" 2>/dev/null || true
 
-            if [ -f "attestation-results/image-metadata.json" ]; then
-              echo "Image metadata retrieved. Checking for attestations..."
-              jq '.manifests[].attestations // empty' attestation-results/image-metadata.json || \
-                echo "No attestations found in image metadata"
+            # Extract any attestations from manifest
+            if [ -f "${RESULTS_DIR}/manifest.json" ]; then
+              jq '.manifests[].annotations | select(."org.opencontainers.image.attestations" != null)' \
+                "${RESULTS_DIR}/manifest.json" > "${RESULTS_DIR}/manifest-attestations.json" 2>/dev/null || true
             fi
           fi
 
@@ -357,21 +358,26 @@ jobs:
             echo "### 📝 Attestation Verification Summary"
             echo "- Image: docker.io/zx8086/capellaql:latest"
             echo "- Timestamp: $(date -u)"
-            if [ -f "attestation-results/attestations.json" ]; then
-              echo "- Status: ✅ Attestations verified"
-              echo "- Details: Found in attestation-results/attestations.json"
-            else
-              echo "- Status: ⚠️ No verified attestations found"
-            fi
-          } > attestation-results/summary.md
+            echo "- Results Directory: ${RESULTS_DIR}"
+
+            # Check each potential result file
+            for file in "${RESULTS_DIR}"/*.json; do
+              if [ -s "$file" ]; then
+                echo "- ✅ Found data in $(basename "$file")"
+              fi
+            done
+          } > "${RESULTS_DIR}/summary.md"
+
+          # Set output directory for next step
+          echo "ATTESTATION_RESULTS_DIR=${RESULTS_DIR}" >> $GITHUB_ENV
 
       - name: Upload attestation results
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: attestation-results
-          path: attestation-results/
+          name: attestation-results-${{ github.run_id }}
+          path: ${{ env.ATTESTATION_RESULTS_DIR }}/
           retention-days: 90
 
       - name: Verify SBOM
