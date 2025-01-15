@@ -186,10 +186,11 @@ jobs:
             BUILDKIT_INLINE_CACHE=1
             DOCKER_BUILDKIT=1
             BUILDKIT_PROGRESS=plain
-            NODE_ENV=production
             BUILD_DATE=${{ env.BUILD_TIMESTAMP }}
-            BUILD_VERSION=${{ github.ref_name || '0.0.1' }}
+            BUILD_VERSION=${{ github.ref_name || '2.0.0' }}
             COMMIT_HASH=${{ github.sha }}
+            GITHUB_REF_NAME=${{ github.ref_name }}
+            NODE_ENV=production
             BASE_URL=${{ vars.BASE_URL }}
             PORT=${{ vars.PORT }}
             ENABLE_FILE_LOGGING=${{ vars.ENABLE_FILE_LOGGING }}
@@ -295,26 +296,73 @@ jobs:
         if: github.event_name != 'pull_request'
         continue-on-error: true
         run: |
+          echo "Checking attestations..."
+
           # Wait for image to be available
           sleep 15
 
-          echo "Checking attestations..."
-          # Use cosign to verify attestations if available
-          if command -v cosign >/dev/null 2>&1; then
-            cosign verify-attestation docker.io/zx8086/capellaql:latest || echo "⚠️ No signed attestations found"
-          else
-            # Fallback to direct inspection
-            ATTESTATIONS=$(docker buildx imagetools inspect docker.io/zx8086/capellaql:latest \
-              --format '{{json .}}' 2>/dev/null | \
-              jq -r '.manifests[].attestations // empty' 2>/dev/null)
+          # Create directory for attestation results
+          mkdir -p attestation-results
 
-            if [ ! -z "$ATTESTATIONS" ]; then
-              echo "✓ Found attestations"
-              echo "$ATTESTATIONS" | jq '.'
-            else
-              echo "⚠️ No attestations found"
+          # Function to verify attestations with proper parameters
+          verify_attestations() {
+            local IMAGE="docker.io/zx8086/capellaql:latest"
+
+            # Verify with cosign using GitHub Actions identity
+            cosign verify-attestation \
+              --type custom \
+              --certificate-identity-regexp "https://github.com/.*" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "$IMAGE" > attestation-results/attestations.json 2>&1 || return 1
+
+            return 0
+          }
+
+          # Attempt verification
+          if verify_attestations; then
+            echo "✓ Successfully verified attestations"
+
+            # Parse and display attestation details
+            if [ -f "attestation-results/attestations.json" ]; then
+              echo "Attestation details:"
+              jq . attestation-results/attestations.json || echo "Failed to parse attestations JSON"
+            fi
+          else
+            echo "⚠️ Attestation verification failed or no attestations found"
+
+            # Fallback to manual inspection
+            echo "Attempting manual inspection..."
+            docker buildx imagetools inspect docker.io/zx8086/capellaql:latest \
+              --format '{{json .}}' > attestation-results/image-metadata.json
+
+            if [ -f "attestation-results/image-metadata.json" ]; then
+              echo "Image metadata retrieved. Checking for attestations..."
+              jq '.manifests[].attestations // empty' attestation-results/image-metadata.json || \
+                echo "No attestations found in image metadata"
             fi
           fi
+
+          # Generate summary
+          {
+            echo "### 📝 Attestation Verification Summary"
+            echo "- Image: docker.io/zx8086/capellaql:latest"
+            echo "- Timestamp: $(date -u)"
+            if [ -f "attestation-results/attestations.json" ]; then
+              echo "- Status: ✅ Attestations verified"
+              echo "- Details: Found in attestation-results/attestations.json"
+            else
+              echo "- Status: ⚠️ No verified attestations found"
+            fi
+          } > attestation-results/summary.md
+
+      - name: Upload attestation results
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: attestation-results
+          path: attestation-results/
+          retention-days: 90
 
       - name: Verify SBOM
         if: github.event_name != 'pull_request'

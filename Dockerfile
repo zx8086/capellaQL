@@ -3,10 +3,6 @@
 # Base stage
 FROM oven/bun:canary-alpine AS base
 
-ARG BUILD_DATE
-ARG BUILD_VERSION
-ARG COMMIT_HASH
-
 # Set common environment variables
 ENV CN_ROOT=/usr/src/app \
     CN_CXXCBC_CACHE_DIR=/usr/src/app/deps/couchbase-cxx-cache \
@@ -91,9 +87,9 @@ ENV ENABLE_OPENTELEMETRY=true \
     PRESERVE_SOURCE_MAPS=true \
     NODE_ENV=production
 
-# Add labels in final stage
+# Consolidate all labels in the final stage
 LABEL org.opencontainers.image.title="capellaql" \
-    org.opencontainers.image.description="CapellaQL GraphQL Service" \
+    org.opencontainers.image.description="CapellaQL is a high-performance GraphQL service built with Bun that provides a modern API interface for Couchbase Capella databases. It features advanced monitoring, caching, and observability capabilities." \
     org.opencontainers.image.version="2.0.0" \
     org.opencontainers.image.created="${BUILD_DATE}" \
     org.opencontainers.image.version="${BUILD_VERSION}" \
