@@ -140,5 +140,4 @@ EXPOSE 4000/tcp
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD bun run healthcheck || exit 1
 
-# Use the script defined in package.json
 CMD ["bun", "run", "start"]

@@ -308,14 +308,24 @@ jobs:
           verify_attestations() {
             local IMAGE="docker.io/zx8086/capellaql:latest"
 
-            # Verify with cosign using GitHub Actions identity
+            # Verify with cosign using GitHub Actions identity and proper workflow identity
+            cosign verify-attestation \
+              --type custom \
+              --certificate-identity "https://github.com/${{ github.repository }}/actions/workflows/docker-ci-cd.yml@${{ github.ref }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "$IMAGE" > attestation-results/attestations.json 2>&1 || \
+            cosign verify-attestation \
+              --type custom \
+              --certificate-identity "https://github.com/${{ github.repository }}/workflows/docker-ci-cd.yml@refs/heads/master" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "$IMAGE" > attestation-results/attestations.json 2>&1 || \
             cosign verify-attestation \
               --type custom \
               --certificate-identity-regexp "https://github.com/.*" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-              "$IMAGE" > attestation-results/attestations.json 2>&1 || return 1
+              "$IMAGE" > attestation-results/attestations.json 2>&1
 
-            return 0
+            return $?
           }
 
           # Attempt verification
@@ -406,17 +416,6 @@ jobs:
           # List generated files
           echo "Generated SBOM files:"
           ls -la sbom-output/
-
-      - name: Upload SBOM Files
-        if: github.event_name != 'pull_request' && success()
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
-        with:
-          name: sbom-files
-          path: |
-            sbom-output/
-            sbom-files.tar.gz
-          retention-days: 90
 
       - name: Upload SBOM Files
         if: github.event_name != 'pull_request' && success()
