@@ -303,67 +303,110 @@ jobs:
           RESULTS_DIR="attestation-results-${TIMESTAMP}"
           mkdir -p "${RESULTS_DIR}"
 
-          # Function to verify attestations
-          verify_attestations() {
-            local IMAGE="docker.io/zx8086/capellaql:latest"
+          # Get image digest
+          echo "Getting image digest..."
+          IMAGE_DIGEST=$(docker buildx imagetools inspect docker.io/zx8086/capellaql:latest --raw | jq -r '.manifests[0].digest')
+          echo "Image digest: ${IMAGE_DIGEST}"
 
-            # Try different verification approaches
-            echo "Attempting SLSA provenance verification..."
+          # Try multiple attestation types and verification methods
+          verify_attestations() {
+            local IMAGE="docker.io/zx8086/capellaql@${IMAGE_DIGEST}"
+            local SUCCESS=false
+
+            echo "Verifying provenance..."
             cosign verify-attestation \
               --type slsaprovenance \
-              --certificate-identity-regexp=".*" \
+              --certificate-identity-regexp="https://github.com/.*" \
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-              "${IMAGE}" > "${RESULTS_DIR}/slsa-attestation.json" 2>/dev/null || true
+              "${IMAGE}" > "${RESULTS_DIR}/provenance.json" 2>/dev/null && SUCCESS=true
 
-            echo "Attempting generic attestation verification..."
+            echo "Verifying SBOM attestation..."
             cosign verify-attestation \
-              --certificate-identity-regexp=".*" \
+              --type cyclonedx \
+              --certificate-identity-regexp="https://github.com/.*" \
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-              "${IMAGE}" > "${RESULTS_DIR}/generic-attestation.json" 2>/dev/null || true
+              "${IMAGE}" > "${RESULTS_DIR}/sbom.json" 2>/dev/null && SUCCESS=true
 
-            # Check if any verification succeeded
-            if [ -s "${RESULTS_DIR}/slsa-attestation.json" ] || [ -s "${RESULTS_DIR}/generic-attestation.json" ]; then
-              return 0
-            fi
-            return 1
+            echo "Verifying generic attestations..."
+            cosign verify-attestation \
+              --certificate-identity-regexp="https://github.com/.*" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${IMAGE}" > "${RESULTS_DIR}/generic.json" 2>/dev/null && SUCCESS=true
+
+            # Try with specific workflow identity
+            echo "Verifying with workflow identity..."
+            cosign verify-attestation \
+              --certificate-identity="https://github.com/${{ github.repository }}/actions/workflows/docker-ci-cd.yml@refs/heads/master" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${IMAGE}" > "${RESULTS_DIR}/workflow.json" 2>/dev/null && SUCCESS=true
+
+            $SUCCESS
           }
 
-          # Fetch and save manifest
-          echo "Fetching manifest..."
-          docker buildx imagetools inspect docker.io/zx8086/capellaql:latest --raw > "${RESULTS_DIR}/manifest.json" 2>/dev/null || true
+          # Download all attestations for analysis
+          echo "Downloading all attestations..."
+          cosign download attestation \
+            docker.io/zx8086/capellaql:latest > "${RESULTS_DIR}/all-attestations.json" 2>/dev/null || true
+
+          # Get raw manifest and attestations
+          echo "Getting manifest and attestations..."
+          docker buildx imagetools inspect docker.io/zx8086/capellaql:latest --raw > "${RESULTS_DIR}/manifest.json"
+
+          # Extract attestations from manifest
+          echo "Extracting attestations from manifest..."
+          jq '.manifests[].annotations | select(."org.opencontainers.image.attestations" != null)' \
+            "${RESULTS_DIR}/manifest.json" > "${RESULTS_DIR}/manifest-attestations.json" 2>/dev/null || true
 
           # Try verification
           if verify_attestations; then
-            echo "✅ Successfully verified at least one attestation"
+            echo "✅ Successfully verified attestations"
 
-            # Combine results
+            # Combine all valid results
             echo "Combining verification results..."
-            jq -s '.' "${RESULTS_DIR}"/*.json > "${RESULTS_DIR}/combined-results.json" 2>/dev/null || true
+            jq -s '[.[] | select(. != null)]' "${RESULTS_DIR}"/*.json > "${RESULTS_DIR}/combined-results.json" 2>/dev/null || true
 
+            # Analyze results
+            echo "Analyzing attestation results..."
+            for file in "${RESULTS_DIR}"/*.json; do
+              if [ -s "$file" ]; then
+                echo "Found attestation data in $(basename "$file")"
+                jq -r '. | length' "$file" > /dev/null 2>&1 && \
+                  echo "  - Contains $(jq '. | length' "$file") entries"
+              fi
+            done
           else
-            echo "⚠️ Standard verification failed, attempting alternative methods..."
+            echo "⚠️ Standard verification failed, using alternative data"
 
-            # Try downloading attestations directly
-            cosign download attestation docker.io/zx8086/capellaql:latest > "${RESULTS_DIR}/downloaded-attestations.json" 2>/dev/null || true
+            # Check downloaded attestations
+            if [ -s "${RESULTS_DIR}/all-attestations.json" ]; then
+              echo "✓ Found downloaded attestations"
+              jq . "${RESULTS_DIR}/all-attestations.json" > "${RESULTS_DIR}/parsed-attestations.json" 2>/dev/null || true
+            fi
 
-            # Extract any attestations from manifest
-            if [ -f "${RESULTS_DIR}/manifest.json" ]; then
-              jq '.manifests[].annotations | select(."org.opencontainers.image.attestations" != null)' \
-                "${RESULTS_DIR}/manifest.json" > "${RESULTS_DIR}/manifest-attestations.json" 2>/dev/null || true
+            # Check manifest attestations
+            if [ -s "${RESULTS_DIR}/manifest-attestations.json" ]; then
+              echo "✓ Found manifest attestations"
             fi
           fi
 
-          # Generate summary
+          # Generate detailed summary
           {
             echo "### 📝 Attestation Verification Summary"
             echo "- Image: docker.io/zx8086/capellaql:latest"
+            echo "- Digest: ${IMAGE_DIGEST}"
             echo "- Timestamp: $(date -u)"
             echo "- Results Directory: ${RESULTS_DIR}"
-
-            # Check each potential result file
+            echo ""
+            echo "#### Found Attestations:"
             for file in "${RESULTS_DIR}"/*.json; do
               if [ -s "$file" ]; then
-                echo "- ✅ Found data in $(basename "$file")"
+                echo "- ✅ $(basename "$file")"
+                echo "  - Size: $(wc -c < "$file") bytes"
+                if jq -e . >/dev/null 2>&1 < "$file"; then
+                  echo "  - Valid JSON structure"
+                else
+                  echo "  - Invalid JSON structure"
+                fi
               fi
             done
           } > "${RESULTS_DIR}/summary.md"
