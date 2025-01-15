@@ -419,7 +419,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: attestation-results-${{ github.run_id }}
+          name: attestation-results-${{ matrix.platform }}-${{ github.run_id }}
           path: ${{ env.ATTESTATION_RESULTS_DIR }}/
           retention-days: 90
 
@@ -471,7 +471,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: sbom-files
+          name: sbom-files-${{ matrix.platform }}
           path: |
             sbom-output/
             sbom-files.tar.gz
@@ -527,7 +527,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-build-records
+          name: docker-build-records-${{ matrix.platform }}
           path: docker-build-records/
           retention-days: 90
 
