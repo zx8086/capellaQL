@@ -10,7 +10,7 @@ runs:
       uses: actions/cache@v3
       with:
         path: |
-          ~/.cache/github-actions
+          ${{ env.ACTIONS_CACHE_DIR }}
           ~/actions-runner/_work/_actions
           ~/actions-runner/_work/_tool
         key: ${{ runner.os }}-actions-${{ github.sha }}
@@ -20,7 +20,7 @@ runs:
     - name: Cache Docker BuildKit
       uses: actions/cache@v3
       with:
-        path: /tmp/.buildx-cache
+        path: ${{ env.ACTIONS_CACHE_DIR }}/buildx
         key: ${{ runner.os }}-buildx-${{ github.sha }}
         restore-keys: |
           ${{ runner.os }}-buildx-
@@ -28,8 +28,7 @@ runs:
     - name: Set Environment Variables
       shell: bash
       run: |
-        echo "ACTIONS_CACHE_DIR=~/.cache/github-actions" >> $GITHUB_ENV
-        echo "ACTIONS_RUNNER_DEBUG=true" >> $GITHUB_ENV
+        # Use the same paths as defined in the main workflow
         echo "DOCKER_BUILDKIT=1" >> $GITHUB_ENV
         echo "COMPOSE_DOCKER_CLI_BUILD=1" >> $GITHUB_ENV
         echo "BUILDX_NO_DEFAULT_LOAD=true" >> $GITHUB_ENV
@@ -39,6 +38,7 @@ runs:
         echo "BUILDKIT_STEP_LOG_MAX_SIZE=10000000" >> $GITHUB_ENV
         echo "BUILDKIT_STEP_LOG_MAX_SPEED=10000000" >> $GITHUB_ENV
         echo "BUILDKIT_CACHE_MOUNT_NS=buildkit-cache" >> $GITHUB_ENV
+        echo "BUILDX_CACHE_PATH=${ACTIONS_CACHE_DIR}/buildx" >> $GITHUB_ENV
 
     - name: Install verification tools
       shell: bash
@@ -55,6 +55,11 @@ runs:
         curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh -s -- -b /usr/local/bin
 
         cd - && rm -rf ~/tmp
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: linux/amd64,linux/arm64
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -75,14 +80,14 @@ runs:
           [registry."docker.io"]
           mirrors = ["mirror.gcr.io"]
 
-          [registry."docker.io".mirror]
-          insecure = false
+          [cache]
+            [cache.local]
+              type = "local"
+              path = "${ACTIONS_CACHE_DIR}/buildx"
+            [cache.registry]
+              type = "registry"
+              ref = "docker.io/zx8086/capellaql:buildcache"
         platforms: linux/arm64,linux/amd64
-
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: linux/amd64,linux/arm64
 
     - name: Set up Bun
       uses: oven-sh/setup-bun@v1

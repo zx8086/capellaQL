@@ -1,4 +1,4 @@
-# .github/actions/setup-environment/action.yml
+# .github/workflows/docker-ci-cd.yml
 
 name: Docker CI/CD with Bun and Snyk
 
@@ -163,10 +163,11 @@ jobs:
             type=registry,ref=docker.io/zx8086/capellaql:buildcache
             type=registry,ref=docker.io/zx8086/capellaql:latest
             type=gha,scope=${{ github.workflow }}
-            type=local,src=/tmp/.buildx-cache
+            type=local,src=${{ env.ACTIONS_CACHE_DIR }}/buildx
           cache-to: |
             type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
             type=gha,mode=max,scope=${{ github.workflow }}
+            type=local,dest=${{ env.ACTIONS_CACHE_DIR }}/buildx,mode=max
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
