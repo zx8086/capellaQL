@@ -81,7 +81,7 @@ RUN set -e && \
     bun install --frozen-lockfile --production && \
     chown -R bun:bun .
 
-# Set production environment variables
+# Set production variables
 ENV ENABLE_OPENTELEMETRY=true \
     SOURCE_MAP_SUPPORT=true \
     PRESERVE_SOURCE_MAPS=true \
