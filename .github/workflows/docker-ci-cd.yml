@@ -149,11 +149,25 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: docker.io/zx8086/capellaql
+          labels: |
+            org.opencontainers.image.title=capellaql
+            org.opencontainers.image.description=CapellaQL is a high-performance GraphQL service for Couchbase Capella databases
+            org.opencontainers.image.version=${BUILD_VERSION}
+            org.opencontainers.image.created=${BUILD_DATE}
+            org.opencontainers.image.revision=${GITHUB_SHA}
+            org.opencontainers.image.authors=Simon Owusu <simonowusupvh@gmail.com>
+            org.opencontainers.image.vendor=Siobytes
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.base.name=oven/bun:canary-alpine
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=long
+            type=schedule,pattern={{date 'YYYYMMDD'}}
             type=ref,event=branch
             type=ref,event=tag
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,format=long
 
       - name: Cache Bun dependencies
         uses: actions/cache@v3
@@ -319,6 +333,35 @@ jobs:
           else
             echo "No build log file found"
           fi
+
+      - name: Validate image metadata
+        if: github.event_name != 'pull_request'
+        run: |
+          IMAGE_REF="docker.io/zx8086/capellaql:latest"
+
+          echo "Validating image metadata..."
+          docker buildx imagetools inspect ${IMAGE_REF} --format '{{json .}}' | jq .
+
+          # Verify required labels
+          REQUIRED_LABELS=(
+            "org.opencontainers.image.title"
+            "org.opencontainers.image.description"
+            "org.opencontainers.image.version"
+            "org.opencontainers.image.created"
+            "org.opencontainers.image.authors"
+            "org.opencontainers.image.vendor"
+            "org.opencontainers.image.licenses"
+          )
+
+          for label in "${REQUIRED_LABELS[@]}"; do
+            value=$(docker inspect ${IMAGE_REF} --format "{{ index .Config.Labels \"$label\" }}")
+            if [ -z "$value" ]; then
+              echo "❌ Missing required label: $label"
+              exit 1
+            else
+              echo "✅ Found label $label: $value"
+            fi
+          done
 
       - name: Verify image manifest
         if: github.event_name != 'pull_request'

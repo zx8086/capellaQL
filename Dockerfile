@@ -90,7 +90,6 @@ ENV ENABLE_OPENTELEMETRY=true \
 # Consolidate all labels in the final stage
 LABEL org.opencontainers.image.title="capellaql" \
     org.opencontainers.image.description="CapellaQL is a high-performance GraphQL service built with Bun that provides a modern API interface for Couchbase Capella databases. It features advanced monitoring, caching, and observability capabilities." \
-    org.opencontainers.image.version="2.0.0" \
     org.opencontainers.image.created="${BUILD_DATE}" \
     org.opencontainers.image.version="${BUILD_VERSION}" \
     org.opencontainers.image.revision="${COMMIT_HASH}" \
@@ -106,7 +105,12 @@ LABEL org.opencontainers.image.title="capellaql" \
     org.opencontainers.image.source.commit="${COMMIT_HASH}" \
     com.capellaql.maintainer="Simon Owusu <simonowusupvh@gmail.com>" \
     com.capellaql.release-date="${BUILD_DATE}" \
-    com.capellaql.version.is-production="true"
+    com.capellaql.version.is-production="true" \
+    org.opencontainers.image.ref.name="${GITHUB_REF_NAME:-master}" \
+    org.opencontainers.image.version.semver="${BUILD_VERSION}" \
+    org.opencontainers.image.version.major="2" \
+    org.opencontainers.image.version.minor="0" \
+    org.opencontainers.image.version.patch="0"
 
 # Set runtime environment variables
 ENV BASE_URL="" \
