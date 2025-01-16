@@ -303,116 +303,116 @@ jobs:
           RESULTS_DIR="attestation-results-${TIMESTAMP}"
           mkdir -p "${RESULTS_DIR}"
 
-          # Get image digest
+          # Get image digest and reference
           echo "Getting image digest..."
-          IMAGE_DIGEST=$(docker buildx imagetools inspect docker.io/zx8086/capellaql:latest --raw | jq -r '.manifests[0].digest')
+          IMAGE_REF="docker.io/zx8086/capellaql:latest"
+          IMAGE_DIGEST=$(docker buildx imagetools inspect "${IMAGE_REF}" --raw | jq -r '.manifests[0].digest')
+          IMAGE_WITH_DIGEST="${IMAGE_REF}@${IMAGE_DIGEST}"
+
+          echo "Image reference: ${IMAGE_REF}"
           echo "Image digest: ${IMAGE_DIGEST}"
 
-          # Try multiple attestation types and verification methods
-          verify_attestations() {
-            local IMAGE="docker.io/zx8086/capellaql@${IMAGE_DIGEST}"
-            local SUCCESS=false
+          # Function to verify a specific attestation type
+          verify_specific_attestation() {
+            local type=$1
+            local output_file=$2
+            local identity_pattern=$3
 
-            echo "Verifying provenance..."
+            echo "Verifying ${type} attestation..."
             cosign verify-attestation \
-              --type slsaprovenance \
-              --certificate-identity-regexp="https://github.com/.*" \
+              --type "${type}" \
+              --certificate-identity-regexp="${identity_pattern}" \
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-              "${IMAGE}" > "${RESULTS_DIR}/provenance.json" 2>/dev/null && SUCCESS=true
-
-            echo "Verifying SBOM attestation..."
-            cosign verify-attestation \
-              --type cyclonedx \
-              --certificate-identity-regexp="https://github.com/.*" \
-              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-              "${IMAGE}" > "${RESULTS_DIR}/sbom.json" 2>/dev/null && SUCCESS=true
-
-            echo "Verifying generic attestations..."
-            cosign verify-attestation \
-              --certificate-identity-regexp="https://github.com/.*" \
-              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-              "${IMAGE}" > "${RESULTS_DIR}/generic.json" 2>/dev/null && SUCCESS=true
-
-            # Try with specific workflow identity
-            echo "Verifying with workflow identity..."
-            cosign verify-attestation \
-              --certificate-identity="https://github.com/${{ github.repository }}/actions/workflows/docker-ci-cd.yml@refs/heads/master" \
-              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-              "${IMAGE}" > "${RESULTS_DIR}/workflow.json" 2>/dev/null && SUCCESS=true
-
-            $SUCCESS
+              "${IMAGE_WITH_DIGEST}" > "${output_file}" 2>/dev/null
+            return $?
           }
 
-          # Download all attestations for analysis
-          echo "Downloading all attestations..."
-          cosign download attestation \
-            docker.io/zx8086/capellaql:latest > "${RESULTS_DIR}/all-attestations.json" 2>/dev/null || true
+          # Try to verify all known attestation types
+          declare -A ATTESTATION_TYPES=(
+            ["slsaprovenance"]="https://github.com/.*"
+            ["vuln"]="https://github.com/.*"
+            ["sbom"]="https://github.com/.*"
+            ["custom"]="https://github.com/.*"
+          )
 
-          # Get raw manifest and attestations
-          echo "Getting manifest and attestations..."
-          docker buildx imagetools inspect docker.io/zx8086/capellaql:latest --raw > "${RESULTS_DIR}/manifest.json"
+          VERIFICATION_SUCCESS=false
 
-          # Extract attestations from manifest
-          echo "Extracting attestations from manifest..."
-          jq '.manifests[].annotations | select(."org.opencontainers.image.attestations" != null)' \
-            "${RESULTS_DIR}/manifest.json" > "${RESULTS_DIR}/manifest-attestations.json" 2>/dev/null || true
+          for type in "${!ATTESTATION_TYPES[@]}"; do
+            output_file="${RESULTS_DIR}/${type}-attestation.json"
+            identity_pattern="${ATTESTATION_TYPES[$type]}"
 
-          # Try verification
-          if verify_attestations; then
-            echo "✅ Successfully verified attestations"
-
-            # Combine all valid results
-            echo "Combining verification results..."
-            jq -s '[.[] | select(. != null)]' "${RESULTS_DIR}"/*.json > "${RESULTS_DIR}/combined-results.json" 2>/dev/null || true
-
-            # Analyze results
-            echo "Analyzing attestation results..."
-            for file in "${RESULTS_DIR}"/*.json; do
-              if [ -s "$file" ]; then
-                echo "Found attestation data in $(basename "$file")"
-                jq -r '. | length' "$file" > /dev/null 2>&1 && \
-                  echo "  - Contains $(jq '. | length' "$file") entries"
-              fi
-            done
-          else
-            echo "⚠️ Standard verification failed, using alternative data"
-
-            # Check downloaded attestations
-            if [ -s "${RESULTS_DIR}/all-attestations.json" ]; then
-              echo "✓ Found downloaded attestations"
-              jq . "${RESULTS_DIR}/all-attestations.json" > "${RESULTS_DIR}/parsed-attestations.json" 2>/dev/null || true
+            if verify_specific_attestation "$type" "$output_file" "$identity_pattern"; then
+              echo "✅ Successfully verified ${type} attestation"
+              VERIFICATION_SUCCESS=true
+            else
+              echo "⚠️ Failed to verify ${type} attestation"
             fi
+          done
 
-            # Check manifest attestations
-            if [ -s "${RESULTS_DIR}/manifest-attestations.json" ]; then
-              echo "✓ Found manifest attestations"
-            fi
+          # If standard verification failed, try alternative methods
+          if [ "$VERIFICATION_SUCCESS" = false ]; then
+            echo "Attempting alternative verification methods..."
+
+            # Try with explicit GitHub Actions workflow identity
+            cosign verify-attestation \
+              --certificate-identity="https://github.com/${{ github.repository }}/actions/workflows/docker-ci-cd.yml@${{ github.ref }}" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${IMAGE_WITH_DIGEST}" > "${RESULTS_DIR}/workflow-attestation.json" 2>/dev/null && \
+              VERIFICATION_SUCCESS=true
+
+            # Download raw attestations for analysis
+            echo "Downloading attestations..."
+            cosign download attestation "${IMAGE_WITH_DIGEST}" > "${RESULTS_DIR}/raw-attestations.json" 2>/dev/null || true
+
+            # Extract from manifest
+            echo "Extracting from manifest..."
+            docker buildx imagetools inspect "${IMAGE_WITH_DIGEST}" --raw > "${RESULTS_DIR}/manifest.json"
+            jq '.manifests[].annotations."org.opencontainers.image.attestations"' "${RESULTS_DIR}/manifest.json" > \
+              "${RESULTS_DIR}/manifest-attestations.json" 2>/dev/null || true
           fi
 
-          # Generate detailed summary
+          # Generate comprehensive report
           {
-            echo "### 📝 Attestation Verification Summary"
-            echo "- Image: docker.io/zx8086/capellaql:latest"
+            echo "### 📝 Attestation Verification Report"
+            echo "- Image: ${IMAGE_REF}"
             echo "- Digest: ${IMAGE_DIGEST}"
             echo "- Timestamp: $(date -u)"
-            echo "- Results Directory: ${RESULTS_DIR}"
             echo ""
-            echo "#### Found Attestations:"
+            echo "#### Verification Results:"
+
+            # Check each result file
             for file in "${RESULTS_DIR}"/*.json; do
               if [ -s "$file" ]; then
-                echo "- ✅ $(basename "$file")"
-                echo "  - Size: $(wc -c < "$file") bytes"
+                basename=$(basename "$file")
+                size=$(wc -c < "$file")
+                echo "- ✅ ${basename%.json}"
+                echo "  - Size: ${size} bytes"
+
+                # Try to extract and display useful information
                 if jq -e . >/dev/null 2>&1 < "$file"; then
                   echo "  - Valid JSON structure"
+                  # Try to extract key attestation information
+                  jq -r 'try .predicateType // "No predicate type"' "$file" | head -n 1 | while read -r predicate; do
+                    echo "  - Predicate: ${predicate}"
+                  done
                 else
                   echo "  - Invalid JSON structure"
                 fi
               fi
             done
-          } > "${RESULTS_DIR}/summary.md"
+
+            echo ""
+            echo "#### Overall Status:"
+            if [ "$VERIFICATION_SUCCESS" = true ]; then
+              echo "✅ Successfully verified at least one attestation"
+            else
+              echo "⚠️ No attestations could be verified, but raw data was collected"
+            fi
+          } > "${RESULTS_DIR}/verification-report.md"
 
           # Set output directory for next step
           echo "ATTESTATION_RESULTS_DIR=${RESULTS_DIR}" >> $GITHUB_ENV
+          echo "VERIFICATION_SUCCESS=${VERIFICATION_SUCCESS}" >> $GITHUB_ENV
 
       - name: Upload attestation results
         if: github.event_name != 'pull_request'
