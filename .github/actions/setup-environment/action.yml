@@ -20,7 +20,7 @@ runs:
     - name: Cache Docker BuildKit
       uses: actions/cache@v3
       with:
-        path: ${{ env.ACTIONS_CACHE_DIR }}/buildx
+        path: ${{ env.DOCKER_BUILDX_CACHE_DIR }}
         key: ${{ runner.os }}-buildx-${{ github.sha }}
         restore-keys: |
           ${{ runner.os }}-buildx-

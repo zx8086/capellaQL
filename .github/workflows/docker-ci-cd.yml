@@ -11,8 +11,10 @@ on:
     - cron: "0 0 * * 0"
 
 env:
-  ACTIONS_CACHE_DIR: /home/pi/actions-runner/_work/_cache
-  ACTIONS_RUNTIME_DIR: /home/pi/actions-runner/_work/_runtime
+  ACTIONS_CACHE_DIR: /home/pi/.buildx-cache
+  ACTIONS_RUNTIME_DIR: /home/pi/.buildx-runtime
+  DOCKER_BUILDX_CACHE_DIR: /home/pi/.buildx-cache/docker
+  GITHUB_WORKSPACE_CACHE: /home/pi/actions-runner/_work/_cache
 
 permissions:
   contents: read
@@ -34,14 +36,68 @@ jobs:
       - name: Setup Environment
         uses: ./.github/actions/setup-environment
 
+      - name: Setup cache directories
+        shell: bash
+        run: |
+          sudo mkdir -p ${{ env.ACTIONS_CACHE_DIR }}
+          sudo mkdir -p ${{ env.ACTIONS_RUNTIME_DIR }}
+          sudo mkdir -p ${{ env.DOCKER_BUILDX_CACHE_DIR }}
+          sudo mkdir -p ${{ env.GITHUB_WORKSPACE_CACHE }}
+          sudo chmod -R 777 ${{ env.ACTIONS_CACHE_DIR }}
+          sudo chmod -R 777 ${{ env.ACTIONS_RUNTIME_DIR }}
+          sudo chmod -R 777 ${{ env.DOCKER_BUILDX_CACHE_DIR }}
+          sudo chmod -R 777 ${{ env.GITHUB_WORKSPACE_CACHE }}
+
+          # Create cache key file if it doesn't exist
+          echo "${GITHUB_SHA}" > ${{ env.ACTIONS_CACHE_DIR }}/cache-key
+
+      - name: Cache BuildKit state
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.ACTIONS_CACHE_DIR }}
+            ${{ env.DOCKER_BUILDX_CACHE_DIR }}
+          key: buildx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            buildx-${{ runner.os }}-
+            buildx-
+
+      - name: Cache npm/bun dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.GITHUB_WORKSPACE_CACHE }}/node_modules
+            ${{ env.GITHUB_WORKSPACE_CACHE }}/bun
+            ~/.bun/install/cache
+            node_modules
+            .build-cache
+            dist
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Move cache
+        run: |
+          if [ -d "${{ env.ACTIONS_CACHE_DIR }}" ]; then
+            echo "Moving cache from previous build..."
+            rm -rf ${{ env.ACTIONS_CACHE_DIR }}.tmp || true
+            mv ${{ env.ACTIONS_CACHE_DIR }} ${{ env.ACTIONS_CACHE_DIR }}.tmp || true
+            mkdir -p ${{ env.ACTIONS_CACHE_DIR }}
+          fi
+
       - name: Warm up action cache
         shell: bash
         run: |
-          mkdir -p $ACTIONS_CACHE_DIR
-          mkdir -p $ACTIONS_RUNTIME_DIR
-          for dir in $ACTIONS_CACHE_DIR/* ; do
-            touch "$dir"  # Update access time
-          done
+          # Restore cache from temp location if exists
+          if [ -d "${{ env.ACTIONS_CACHE_DIR }}.tmp" ]; then
+            echo "Restoring cache from temporary location..."
+            cp -r ${{ env.ACTIONS_CACHE_DIR }}.tmp/* ${{ env.ACTIONS_CACHE_DIR }}/ || true
+            rm -rf ${{ env.ACTIONS_CACHE_DIR }}.tmp
+          fi
+
+          # Touch all cache files to update access time
+          find ${{ env.ACTIONS_CACHE_DIR }} -type f -exec touch {} +
+          find ${{ env.DOCKER_BUILDX_CACHE_DIR }} -type f -exec touch {} +
 
       # Initial Setup
       - name: Set build timestamp
@@ -160,14 +216,13 @@ jobs:
           load: false
           platforms: ${{ matrix.platform }}
           cache-from: |
+            type=local,src=${{ env.DOCKER_BUILDX_CACHE_DIR }}
             type=registry,ref=docker.io/zx8086/capellaql:buildcache
-            type=registry,ref=docker.io/zx8086/capellaql:latest
             type=gha,scope=${{ github.workflow }}
-            type=local,src=${{ env.ACTIONS_CACHE_DIR }}/buildx
           cache-to: |
+            type=local,dest=${{ env.DOCKER_BUILDX_CACHE_DIR }},mode=max
             type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
             type=gha,mode=max,scope=${{ github.workflow }}
-            type=local,dest=${{ env.ACTIONS_CACHE_DIR }}/buildx,mode=max
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -180,14 +235,13 @@ jobs:
           provenance: true
           sbom: true
           cache-from: |
+            type=local,src=${{ env.DOCKER_BUILDX_CACHE_DIR }}
             type=registry,ref=docker.io/zx8086/capellaql:buildcache
-            type=registry,ref=docker.io/zx8086/capellaql:latest
             type=gha,scope=${{ github.workflow }}
-            type=local,src=/tmp/.buildx-cache
           cache-to: |
+            type=local,dest=${{ env.DOCKER_BUILDX_CACHE_DIR }},mode=max
             type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
             type=gha,mode=max,scope=${{ github.workflow }}
-          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry' }}
           build-args: |
             BUILDKIT_INLINE_CACHE=1
             DOCKER_BUILDKIT=1
@@ -642,6 +696,29 @@ jobs:
       - name: Set build end time
         run: echo "BUILD_END_TIME=$(date +%s)" >> $GITHUB_ENV
 
+      - name: Cleanup old caches
+        if: always()
+        run: |
+          # Keep only caches newer than 7 days
+          find ${{ env.ACTIONS_CACHE_DIR }} -type f -atime +7 -delete
+          find ${{ env.DOCKER_BUILDX_CACHE_DIR }} -type f -atime +7 -delete
+
+          # Prune BuildKit cache but keep recent entries
+          docker builder prune --filter until=168h --force --keep-storage=20GB
+
+          # Remove temporary cache locations
+          rm -rf ${{ env.ACTIONS_CACHE_DIR }}.tmp || true
+
+      - name: Debug cache
+        shell: bash
+        run: |
+          echo "Cache directory contents:"
+          ls -la $ACTIONS_CACHE_DIR
+          echo "Runtime directory contents:"
+          ls -la $ACTIONS_RUNTIME_DIR
+          echo "Actions directory contents:"
+          ls -la ~/actions-runner/_work/_actions
+
       # Optimized Build Summary
       - name: Docker Build Summary
         continue-on-error: true
@@ -793,28 +870,6 @@ jobs:
               echo "✅ Build cache is performing well with ${CACHE_RATIO}% hit rate"
             fi
           } >> $GITHUB_STEP_SUMMARY
-
-      - name: Cleanup old caches
-        if: github.event_name == 'schedule'
-        run: |
-          find $ACTIONS_CACHE_DIR -type f -atime +7 -delete
-          find $ACTIONS_RUNTIME_DIR -type f -atime +7 -delete
-          docker buildx prune --filter until=168h --force --keep-storage=20GB
-          docker builder prune --filter until=168h --force --keep-storage=20GB
-          gh extension install actions/gh-actions-cache
-          gh actions-cache delete match -R ${{ github.repository }} "bun-" --confirm
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Debug cache
-        shell: bash
-        run: |
-          echo "Cache directory contents:"
-          ls -la $ACTIONS_CACHE_DIR
-          echo "Runtime directory contents:"
-          ls -la $ACTIONS_RUNTIME_DIR
-          echo "Actions directory contents:"
-          ls -la ~/actions-runner/_work/_actions
 
       # Enhanced cleanup with workspace cleaning
       - name: Cleanup
