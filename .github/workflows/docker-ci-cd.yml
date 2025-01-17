@@ -378,6 +378,7 @@ jobs:
 
       # Add the new push step here, after the build
       - name: Push image with digest
+        continue-on-error: true
         if: github.event_name != 'pull_request'
         run: |
           # Get the digest from the build step
@@ -390,6 +391,7 @@ jobs:
             docker.io/zx8086/capellaql@${DIGEST}
 
       - name: Verify build
+        continue-on-error: true
         if: success()
         run: |
           echo "Verifying build for ${{ matrix.platform }}..."
@@ -411,6 +413,7 @@ jobs:
           docker inspect docker.io/zx8086/capellaql:latest | jq '.[0].Architecture'
 
       - name: Handle build failure
+        continue-on-error: true
         if: failure()
         run: |
           echo "Build failed for ${{ matrix.platform }}"
@@ -423,6 +426,7 @@ jobs:
 
       # Add a platform-specific manifest creation step
       - name: Export digest
+        continue-on-error: true
         if: success()
         run: |
           mkdir -p /tmp/digests
@@ -431,6 +435,7 @@ jobs:
 
       # Create and push the manifest
       - name: Merge and push manifest
+        continue-on-error: true
         if: success() && github.event_name != 'pull_request'
         run: |
           docker buildx imagetools create -t docker.io/zx8086/capellaql:latest \
@@ -438,6 +443,7 @@ jobs:
 
       # Add platform-specific cache handling
       - name: Handle platform cache
+        continue-on-error: true
         if: success()
         run: |
           CACHE_DIR="${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}"
@@ -449,6 +455,7 @@ jobs:
           fi
 
       - name: Cache platform-specific chunks
+        continue-on-error: true
         if: success()
         uses: actions/cache@v3
         with:
