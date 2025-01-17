@@ -99,7 +99,7 @@ jobs:
           mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
 
           # Create buildx config file
-          cat > buildkitd.toml << EOL
+          cat > buildkitd.toml << "EOF"
           [worker.oci]
           max-parallelism = 1
           gc = true
@@ -120,7 +120,7 @@ jobs:
               type = "registry"
               ref = "docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}"
               max-size = 5368709120
-          EOL
+          EOF
 
           # Create new builder instance with config
           docker buildx create --use \
@@ -128,7 +128,7 @@ jobs:
             --platform ${{ matrix.platform }} \
             --driver-opt network=host \
             --config "$(pwd)/buildkitd.toml" \
-            --buildkitd-flags '--debug
+            --buildkitd-flags '--debug'
 
       - name: Cache npm/bun dependencies
         uses: actions/cache@v3
