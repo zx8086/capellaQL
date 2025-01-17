@@ -98,8 +98,12 @@ jobs:
           PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
           mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
 
+          # Initialize buildx cache
+          echo '{"layers":{}}' > "${PLATFORM_CACHE_DIR}/buildx/index.json"
+          chmod 666 "${PLATFORM_CACHE_DIR}/buildx/index.json"
+
           # Create buildx config file
-          cat > buildkitd.toml << 'EOF'
+          cat > buildkitd.toml << EOF
           [worker.oci]
           max-parallelism = 1
           gc = true
@@ -116,19 +120,15 @@ jobs:
               type = "local"
               path = "${PLATFORM_CACHE_DIR}/buildx"
               max-size = 5368709120
-            [cache.registry]
-              type = "registry"
-              ref = "docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}"
-              max-size = 5368709120
           EOF
 
-          # Create new builder instance with config
+          # Create new builder instance
           docker buildx create --use \
             --name "builder-${{ matrix.platform-name }}" \
             --platform ${{ matrix.platform }} \
             --driver-opt network=host \
-            --config "$(pwd)/buildkitd.toml" \
-            --buildkitd-flags '--debug'
+            --config buildkitd.toml \
+            --buildkitd-flags '--debug
 
       - name: Cache npm/bun dependencies
         uses: actions/cache@v3
@@ -228,8 +228,10 @@ jobs:
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.base.name=oven/bun:canary-alpine
           tags: |
-            type=schedule,pattern={{date 'YYYYMMDD'}}
             type=ref,event=branch
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=schedule,pattern={{date 'YYYYMMDD'}}
             type=ref,event=tag
             type=ref,event=pr
             type=semver,pattern={{version}}
@@ -281,6 +283,15 @@ jobs:
           docker builder prune -a -f
         continue-on-error: true
 
+      # Add the new cleanup step here, before the Docker build
+      - name: Cleanup before build
+        run: |
+          docker buildx prune -f
+          docker system prune -af
+          rm -rf "${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}/buildx"
+          mkdir -p "${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}/buildx"
+          echo '{"layers":{}}' > "${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}/buildx/index.json"
+
       # Docker build and push section
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -315,16 +326,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.platform }}
-          outputs: |
-            type=registry
-            type=image,name=docker.io/zx8086/capellaql,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=docker.io/zx8086/capellaql,push=true
           cache-from: |
-            type=local,src=${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}/buildx
             type=registry,ref=docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}
           cache-to: |
-            type=local,dest=${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}/buildx,mode=max
             type=registry,ref=docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }},mode=max
-          provenance: true
+          provenance: false # Temporarily disable for troubleshooting
           sbom: true
           build-args: |
             BUILDKIT_INLINE_CACHE=1
@@ -359,6 +366,19 @@ jobs:
             BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=${{ vars.BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS }}
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
+
+      # Add the new push step here, after the build
+      - name: Push image with digest
+        if: github.event_name != 'pull_request'
+        run: |
+          # Get the digest from the build step
+          DIGEST="${{ steps.docker_build.outputs.digest }}"
+
+          # Push the image with explicit digest
+          docker buildx imagetools create \
+            --tag docker.io/zx8086/capellaql:latest \
+            --tag docker.io/zx8086/capellaql:${{ github.sha }} \
+            docker.io/zx8086/capellaql@${DIGEST}
 
       - name: Verify build
         if: success()
