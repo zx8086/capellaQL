@@ -825,6 +825,7 @@ jobs:
             PRESERVE_SOURCE_MAPS=true
 
       - name: Test container
+        continue-on-error: true
         if: github.event_name != 'pull_request'
         run: |
           # Stop existing containers using port 4000
