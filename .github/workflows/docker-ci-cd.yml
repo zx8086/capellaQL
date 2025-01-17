@@ -98,12 +98,8 @@ jobs:
           PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
           mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
 
-          # Initialize buildx cache
-          echo '{"layers":{}}' > "${PLATFORM_CACHE_DIR}/buildx/index.json"
-          chmod 666 "${PLATFORM_CACHE_DIR}/buildx/index.json"
-
           # Create buildx config file
-          cat > buildkitd.toml << EOF
+          cat > buildkitd.toml << EOL
           [worker.oci]
           max-parallelism = 1
           gc = true
@@ -120,14 +116,18 @@ jobs:
               type = "local"
               path = "${PLATFORM_CACHE_DIR}/buildx"
               max-size = 5368709120
-          EOF
+            [cache.registry]
+              type = "registry"
+              ref = "docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}"
+              max-size = 5368709120
+          EOL
 
-          # Create new builder instance
+          # Create new builder instance with config
           docker buildx create --use \
             --name "builder-${{ matrix.platform-name }}" \
             --platform ${{ matrix.platform }} \
             --driver-opt network=host \
-            --config buildkitd.toml \
+            --config "$(pwd)/buildkitd.toml" \
             --buildkitd-flags '--debug
 
       - name: Cache npm/bun dependencies
