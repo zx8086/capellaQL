@@ -98,6 +98,11 @@ jobs:
           PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
           mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
 
+          # Clean up any existing buildx resources
+          docker buildx ls | grep builder- | awk '{print $1}' | xargs -r docker buildx rm -f || true
+          docker ps -a | grep buildx_buildkit | awk '{print $1}' | xargs -r docker rm -f || true
+          docker builder prune -f || true
+
           # Create buildx config file
           cat > buildkitd.toml << "EOF"
           [worker.oci]
@@ -122,16 +127,17 @@ jobs:
               max-size = 5368709120
           EOF
 
-          # Remove existing builder if it exists
-          docker buildx rm -f "builder-${{ matrix.platform-name }}" || true
-
-          # Create new builder instance with config
-          docker buildx create --name "builder-${{ matrix.platform-name }}" \
+          # Create and initialize new builder
+          BUILDER_NAME="builder-${{ matrix.platform-name }}"
+          docker buildx create --bootstrap --use \
+            --name "${BUILDER_NAME}" \
             --platform ${{ matrix.platform }} \
             --driver-opt network=host \
             --config "$(pwd)/buildkitd.toml" \
-            --buildkitd-flags '--debug' \
-            --use
+            --buildkitd-flags '--debug'
+
+          # Verify builder is ready
+          docker buildx inspect "${BUILDER_NAME}" --bootstrap
 
       - name: Cache npm/bun dependencies
         uses: actions/cache@v3
@@ -329,12 +335,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=docker.io/zx8086/capellaql,push=true
+          builder: ${{ format('builder-{0}', matrix.platform-name) }}
           cache-from: |
             type=registry,ref=docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}
           cache-to: |
             type=registry,ref=docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }},mode=max
-          provenance: false # Temporarily disable for troubleshooting
+          provenance: false
           sbom: true
           build-args: |
             BUILDKIT_INLINE_CACHE=1
