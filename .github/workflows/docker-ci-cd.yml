@@ -122,13 +122,16 @@ jobs:
               max-size = 5368709120
           EOF
 
+          # Remove existing builder if it exists
+          docker buildx rm -f "builder-${{ matrix.platform-name }}" || true
+
           # Create new builder instance with config
-          docker buildx create --use \
-            --name "builder-${{ matrix.platform-name }}" \
+          docker buildx create --name "builder-${{ matrix.platform-name }}" \
             --platform ${{ matrix.platform }} \
             --driver-opt network=host \
             --config "$(pwd)/buildkitd.toml" \
-            --buildkitd-flags '--debug'
+            --buildkitd-flags '--debug' \
+            --use
 
       - name: Cache npm/bun dependencies
         uses: actions/cache@v3
