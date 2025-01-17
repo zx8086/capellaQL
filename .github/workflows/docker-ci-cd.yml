@@ -99,7 +99,7 @@ jobs:
           mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
 
           # Create buildx config file
-          cat > buildkitd.toml << EOF
+          cat > buildkitd.toml << 'EOF'
           [worker.oci]
           max-parallelism = 1
           gc = true
@@ -127,7 +127,7 @@ jobs:
             --name "builder-${{ matrix.platform-name }}" \
             --platform ${{ matrix.platform }} \
             --driver-opt network=host \
-            --config buildkitd.toml \
+            --config "$(pwd)/buildkitd.toml" \
             --buildkitd-flags '--debug'
 
       - name: Cache npm/bun dependencies
