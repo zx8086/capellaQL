@@ -93,4 +93,4 @@ runs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v1
       with:
-        bun-version: canary-alpine
+        bun-version: latest
