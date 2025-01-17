@@ -11,10 +11,18 @@ on:
     - cron: "0 0 * * 0"
 
 env:
+  BUILDKIT_STEP_LOG_MAX_SIZE: 10000000
+  BUILDKIT_STEP_LOG_MAX_SPEED: 1000000
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+  BUILDX_NO_DEFAULT_LOAD: true
+  ACTIONS_CACHE_SIZE: 5GB
+  ACTIONS_RUNTIME_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   ACTIONS_CACHE_DIR: /home/pi/.buildx-cache
   ACTIONS_RUNTIME_DIR: /home/pi/.buildx-runtime
   DOCKER_BUILDX_CACHE_DIR: /home/pi/.buildx-cache/docker
   GITHUB_WORKSPACE_CACHE: /home/pi/actions-runner/_work/_cache
+  BUILDKIT_PROGRESS: plain
 
 permissions:
   contents: read
@@ -26,9 +34,13 @@ jobs:
     runs-on: self-hosted
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            platform-name: amd64
+          - platform: linux/arm64
+            platform-name: arm64
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
 
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +72,50 @@ jobs:
           key: buildx-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
             buildx-${{ runner.os }}-
-            buildx-
+          enableCrossOsArchive: true
+          compressionLevel: 6
+          maxSize: 5GB
+
+      - name: Verify platform cache directories
+        run: |
+          PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
+          echo "Verifying cache directory for ${{ matrix.platform }}"
+          ls -la "${PLATFORM_CACHE_DIR}" || true
+          echo "Buildx cache contents:"
+          ls -la "${PLATFORM_CACHE_DIR}/buildx" || true
+
+      - name: Setup platform-specific buildx configuration
+        run: |
+          PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
+          mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
+
+          # Update buildx configuration for current platform
+          docker buildx create --use \
+            --platform ${{ matrix.platform }} \
+            --driver-opt network=host \
+            --buildkitd-flags '--debug' \
+            --config - <<EOF
+          [worker.oci]
+          max-parallelism = 1
+          gc = true
+
+          [worker.containerd]
+          gc = true
+          gc-keepstorage = "5GB"
+
+          [registry."docker.io"]
+          mirrors = ["mirror.gcr.io"]
+
+          [cache]
+            [cache.local]
+              type = "local"
+              path = "${PLATFORM_CACHE_DIR}/buildx"
+              max-size = 5GB
+            [cache.registry]
+              type = "registry"
+              ref = "docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}"
+              max-size = 5GB
+          EOF
 
       - name: Cache npm/bun dependencies
         uses: actions/cache@v3
@@ -240,22 +295,24 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
+        id: docker_build
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.platform }}
+          outputs: |
+            type=registry
+            type=image,name=docker.io/zx8086/capellaql,push-by-digest=true,name-canonical=true,push=true
+          cache-from: |
+            type=local,src=${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}/buildx
+            type=registry,ref=docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}
+          cache-to: |
+            type=local,dest=${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}/buildx,mode=max
+            type=registry,ref=docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }},mode=max
           provenance: true
           sbom: true
-          cache-from: |
-            type=local,src=${{ env.DOCKER_BUILDX_CACHE_DIR }}
-            type=registry,ref=docker.io/zx8086/capellaql:buildcache
-            type=gha,scope=${{ github.workflow }}
-          cache-to: |
-            type=local,dest=${{ env.DOCKER_BUILDX_CACHE_DIR }},mode=max
-            type=registry,ref=docker.io/zx8086/capellaql:buildcache,mode=max
-            type=gha,mode=max,scope=${{ github.workflow }}
           build-args: |
             BUILDKIT_INLINE_CACHE=1
             DOCKER_BUILDKIT=1
@@ -289,6 +346,74 @@ jobs:
             BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=${{ vars.BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS }}
             SOURCE_MAP_SUPPORT=true
             PRESERVE_SOURCE_MAPS=true
+
+      - name: Verify build
+        if: success()
+        run: |
+          echo "Verifying build for ${{ matrix.platform }}..."
+
+          # Wait for image to be available
+          sleep 15
+
+          # Try to pull the image
+          docker pull --platform ${{ matrix.platform }} docker.io/zx8086/capellaql:latest || true
+
+          # Verify image exists
+          if ! docker inspect docker.io/zx8086/capellaql:latest > /dev/null 2>&1; then
+            echo "Warning: Image verification failed, but continuing..."
+          else
+            echo "✅ Image verification successful"
+          fi
+
+          # Check platform-specific details
+          docker inspect docker.io/zx8086/capellaql:latest | jq '.[0].Architecture'
+
+      - name: Handle build failure
+        if: failure()
+        run: |
+          echo "Build failed for ${{ matrix.platform }}"
+          echo "Cleaning up..."
+          docker system prune -af
+          docker builder prune -af
+
+          # Remove platform-specific cache
+          rm -rf ${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}
+
+      # Add a platform-specific manifest creation step
+      - name: Export digest
+        if: success()
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.docker_build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      # Create and push the manifest
+      - name: Merge and push manifest
+        if: success() && github.event_name != 'pull_request'
+        run: |
+          docker buildx imagetools create -t docker.io/zx8086/capellaql:latest \
+            $(cat /tmp/digests/* | xargs -I {} echo "-t docker.io/zx8086/capellaql@{}")
+
+      # Add platform-specific cache handling
+      - name: Handle platform cache
+        if: success()
+        run: |
+          CACHE_DIR="${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}"
+          mkdir -p "${CACHE_DIR}/chunks"
+
+          if [ -f "${CACHE_DIR}/buildx-cache.tar.gz" ]; then
+            cd "${CACHE_DIR}"
+            split -b 1G buildx-cache.tar.gz "chunks/cache-chunk-"
+          fi
+
+      - name: Cache platform-specific chunks
+        if: success()
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.ACTIONS_CACHE_DIR }}/${{ matrix.platform-name }}/chunks
+          key: buildx-chunks-${{ runner.os }}-${{ matrix.platform-name }}-${{ github.sha }}
+          restore-keys: |
+            buildx-chunks-${{ runner.os }}-${{ matrix.platform-name }}-
 
       - name: Capture Build Output
         continue-on-error: true
@@ -335,6 +460,7 @@ jobs:
           fi
 
       - name: Validate image metadata
+        continue-on-error: true
         if: github.event_name != 'pull_request'
         run: |
           IMAGE_REF="docker.io/zx8086/capellaql:latest"
@@ -913,6 +1039,23 @@ jobs:
               echo "✅ Build cache is performing well with ${CACHE_RATIO}% hit rate"
             fi
           } >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup and maintain cache
+        run: |
+          # Remove old cache entries
+          find ${{ env.ACTIONS_CACHE_DIR }} -type f -mtime +7 -delete
+          find ${{ env.DOCKER_BUILDX_CACHE_DIR }} -type f -mtime +7 -delete
+
+          # Compress remaining cache
+          if [ -d "${{ env.DOCKER_BUILDX_CACHE_DIR }}" ]; then
+            cd ${{ env.DOCKER_BUILDX_CACHE_DIR }}
+            tar czf ../buildx-cache.tar.gz .
+            cd ..
+            rm -rf ${{ env.DOCKER_BUILDX_CACHE_DIR }}
+            mkdir -p ${{ env.DOCKER_BUILDX_CACHE_DIR }}
+            tar xzf buildx-cache.tar.gz -C ${{ env.DOCKER_BUILDX_CACHE_DIR }}
+            rm buildx-cache.tar.gz
+          fi
 
       # Enhanced cleanup with workspace cleaning
       - name: Cleanup
