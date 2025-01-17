@@ -73,35 +73,40 @@ jobs:
           restore-keys: |
             buildx-${{ runner.os }}-
           enableCrossOsArchive: true
-          compressionLevel: 6
-          maxSize: 5GB
+
+      - name: Create platform directories
+        run: |
+          PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
+          mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
+          chmod -R 777 "${PLATFORM_CACHE_DIR}"
 
       - name: Verify platform cache directories
         run: |
           PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
           echo "Verifying cache directory for ${{ matrix.platform }}"
-          ls -la "${PLATFORM_CACHE_DIR}" || true
-          echo "Buildx cache contents:"
-          ls -la "${PLATFORM_CACHE_DIR}/buildx" || true
+          if [ -d "${PLATFORM_CACHE_DIR}" ]; then
+            ls -la "${PLATFORM_CACHE_DIR}"
+            echo "Buildx cache contents:"
+            ls -la "${PLATFORM_CACHE_DIR}/buildx" || echo "Buildx directory is empty"
+          else
+            echo "Creating platform cache directory"
+            mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
+          fi
 
       - name: Setup platform-specific buildx configuration
         run: |
           PLATFORM_CACHE_DIR="${ACTIONS_CACHE_DIR}/${{ matrix.platform-name }}"
           mkdir -p "${PLATFORM_CACHE_DIR}/buildx"
 
-          # Update buildx configuration for current platform
-          docker buildx create --use \
-            --platform ${{ matrix.platform }} \
-            --driver-opt network=host \
-            --buildkitd-flags '--debug' \
-            --config - <<EOF
+          # Create buildx config file
+          cat > buildkitd.toml << EOF
           [worker.oci]
           max-parallelism = 1
           gc = true
 
           [worker.containerd]
           gc = true
-          gc-keepstorage = "5GB"
+          gc-keepstorage = 5368709120
 
           [registry."docker.io"]
           mirrors = ["mirror.gcr.io"]
@@ -110,12 +115,20 @@ jobs:
             [cache.local]
               type = "local"
               path = "${PLATFORM_CACHE_DIR}/buildx"
-              max-size = 5GB
+              max-size = 5368709120
             [cache.registry]
               type = "registry"
               ref = "docker.io/zx8086/capellaql:buildcache-${{ matrix.platform-name }}"
-              max-size = 5GB
+              max-size = 5368709120
           EOF
+
+          # Create new builder instance with config
+          docker buildx create --use \
+            --name "builder-${{ matrix.platform-name }}" \
+            --platform ${{ matrix.platform }} \
+            --driver-opt network=host \
+            --config buildkitd.toml \
+            --buildkitd-flags '--debug'
 
       - name: Cache npm/bun dependencies
         uses: actions/cache@v3

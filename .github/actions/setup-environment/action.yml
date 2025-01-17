@@ -68,7 +68,7 @@ runs:
           image=moby/buildkit:latest
           network=host
         buildkitd-flags: --debug
-        buildkitd-config-inline: |
+        config: |
           [worker.oci]
           max-parallelism = 1
           gc = true
@@ -83,7 +83,7 @@ runs:
           [cache]
             [cache.local]
               type = "local"
-              path = "${{ env.ACTIONS_CACHE_DIR }}/buildx"
+              path = "/tmp/buildx-cache"
               max-size = 5368709120
             [cache.registry]
               type = "registry"
